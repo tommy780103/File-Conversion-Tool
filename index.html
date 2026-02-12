@@ -1,0 +1,611 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>ファイル変換ツール</title>
+  <meta name="description" content="Excel→PDF、画像→PDF、CSV⇔Excel、PDF結合・分割。ブラウザ上で完結、サーバーへのアップロード不要。">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Noto+Sans+JP:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="index.css">
+</head>
+<body>
+  <div class="bg-gradient"></div>
+  <div class="bg-grid"></div>
+
+  <main class="container">
+    <!-- Header -->
+    <header class="header">
+      <div class="logo">
+        <div class="logo-icon">
+          <svg width="32" height="32" viewBox="0 0 32 32" fill="none">
+            <rect x="2" y="4" width="18" height="24" rx="2" stroke="currentColor" stroke-width="2"/>
+            <path d="M7 10h8M7 14h8M7 18h5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+            <rect x="12" y="12" width="18" height="18" rx="2" fill="url(#grad)" stroke="currentColor" stroke-width="2"/>
+            <path d="M17 18h8M17 22h8M17 26h5" stroke="white" stroke-width="1.5" stroke-linecap="round"/>
+            <defs>
+              <linearGradient id="grad" x1="12" y1="12" x2="30" y2="30">
+                <stop stop-color="#6366f1"/>
+                <stop offset="1" stop-color="#8b5cf6"/>
+              </linearGradient>
+            </defs>
+          </svg>
+        </div>
+        <div>
+          <h1>ファイル変換ツール</h1>
+          <p class="subtitle">ブラウザ上で安全に変換・データはサーバーに送信されません</p>
+        </div>
+      </div>
+    </header>
+
+    <!-- Tab Navigation -->
+    <nav class="tab-nav">
+      <button class="tab-btn" data-tab="excel-pdf">
+        <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
+          <rect x="2" y="2" width="10" height="14" rx="1.5" stroke="currentColor" stroke-width="1.5"/>
+          <path d="M5 6h4M5 9h4M5 12h2" stroke="currentColor" stroke-width="1" stroke-linecap="round"/>
+          <rect x="8" y="6" width="10" height="12" rx="1.5" fill="currentColor" opacity="0.2" stroke="currentColor" stroke-width="1.5"/>
+        </svg>
+        <span>Excel → PDF</span>
+      </button>
+      <button class="tab-btn" data-tab="image-pdf">
+        <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
+          <rect x="2" y="3" width="16" height="14" rx="2" stroke="currentColor" stroke-width="1.5"/>
+          <circle cx="7" cy="8" r="2" stroke="currentColor" stroke-width="1.2"/>
+          <path d="M2 14l4-4 3 3 3-4 4 5" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+        <span>画像 → PDF</span>
+      </button>
+      <button class="tab-btn" data-tab="csv-excel">
+        <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
+          <rect x="2" y="2" width="16" height="16" rx="2" stroke="currentColor" stroke-width="1.5"/>
+          <path d="M2 7h16M2 12h16M7 2v16M12 2v16" stroke="currentColor" stroke-width="1" opacity="0.5"/>
+        </svg>
+        <span>CSV ⇔ Excel</span>
+      </button>
+      <button class="tab-btn" data-tab="pdf-tools">
+        <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
+          <rect x="1" y="2" width="8" height="11" rx="1.5" stroke="currentColor" stroke-width="1.5"/>
+          <rect x="11" y="7" width="8" height="11" rx="1.5" stroke="currentColor" stroke-width="1.5"/>
+          <path d="M5 6h0M5 9h0" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+          <path d="M15 11h0M15 14h0" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+        </svg>
+        <span>PDF 結合・分割</span>
+      </button>
+    </nav>
+
+    <!-- Tab Panels -->
+    <div class="tab-panels">
+
+      <!-- ========== Panel 1: Excel → PDF ========== -->
+      <div id="panel-excel-pdf" class="tab-panel hidden">
+        <!-- Drop Zone -->
+        <section id="dropZone-excel-pdf" class="drop-zone">
+          <div class="drop-zone-content">
+            <div class="drop-icon">
+              <svg width="64" height="64" viewBox="0 0 64 64" fill="none">
+                <path d="M32 8v32M20 28l12 12 12-12" stroke="url(#uploadGrad1)" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+                <path d="M8 44v8a4 4 0 004 4h40a4 4 0 004-4v-8" stroke="url(#uploadGrad1)" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+                <defs><linearGradient id="uploadGrad1" x1="8" y1="8" x2="56" y2="56"><stop stop-color="#6366f1"/><stop offset="1" stop-color="#a78bfa"/></linearGradient></defs>
+              </svg>
+            </div>
+            <p class="drop-text">Excelファイルをドラッグ＆ドロップ</p>
+            <p class="drop-subtext">または</p>
+            <label class="file-select-btn" for="fileInput-excel-pdf">
+              <svg width="20" height="20" viewBox="0 0 20 20" fill="none"><path d="M10 4v12M4 10h12" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+              ファイルを選択
+            </label>
+            <input type="file" id="fileInput-excel-pdf" accept=".xlsx,.xls,.csv" multiple hidden>
+            <p class="drop-formats">.xlsx / .xls / .csv 対応（複数ファイル可）</p>
+          </div>
+          <div class="drop-zone-compact">
+            <svg width="20" height="20" viewBox="0 0 20 20" fill="none"><path d="M10 4v12M4 10h12" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+            <span>ファイルを追加</span>
+          </div>
+        </section>
+
+        <!-- ファイル一覧バー -->
+        <section id="fileChips-excel-pdf" class="file-chips hidden">
+          <div class="file-chips-header">
+            <h2>読み込み済みファイル</h2>
+            <button id="clearAllFiles-excel-pdf" class="sheet-action-btn danger-btn">すべて削除</button>
+          </div>
+          <div id="fileChipsContainer-excel-pdf" class="file-chips-container"></div>
+        </section>
+
+        <!-- シートリスト -->
+        <section id="sheetList-excel-pdf" class="sheet-list hidden">
+          <div class="sheet-list-header">
+            <h2>シート一覧</h2>
+            <div class="sheet-list-actions">
+              <button id="selectAllSheets-excel-pdf" class="sheet-action-btn">全選択</button>
+              <button id="deselectAllSheets-excel-pdf" class="sheet-action-btn">全解除</button>
+            </div>
+          </div>
+          <div id="sheetListContainer-excel-pdf" class="sheet-list-container"></div>
+        </section>
+
+        <!-- デフォルト設定 -->
+        <section id="defaultSettings-excel-pdf" class="default-settings hidden">
+          <div class="default-settings-header">
+            <h2>デフォルト設定</h2>
+            <button id="applyToAll-excel-pdf" class="sheet-action-btn accent-btn">全シートに適用</button>
+          </div>
+          <div class="options-grid">
+            <div class="option-group">
+              <label for="defaultPageSize-excel-pdf">用紙サイズ</label>
+              <div class="select-wrapper">
+                <select id="defaultPageSize-excel-pdf">
+                  <option value="a4" selected>A4</option>
+                  <option value="a3">A3</option>
+                  <option value="letter">Letter</option>
+                  <option value="legal">Legal</option>
+                </select>
+              </div>
+            </div>
+            <div class="option-group">
+              <label for="defaultOrientation-excel-pdf">向き</label>
+              <div class="select-wrapper">
+                <select id="defaultOrientation-excel-pdf">
+                  <option value="portrait">縦（ポートレート）</option>
+                  <option value="landscape" selected>横（ランドスケープ）</option>
+                </select>
+              </div>
+            </div>
+            <div class="option-group">
+              <label for="defaultFontSize-excel-pdf">フォントサイズ</label>
+              <div class="select-wrapper">
+                <select id="defaultFontSize-excel-pdf">
+                  <option value="7">7pt（コンパクト）</option>
+                  <option value="8" selected>8pt（標準）</option>
+                  <option value="9">9pt</option>
+                  <option value="10">10pt（大きめ）</option>
+                  <option value="12">12pt</option>
+                </select>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <!-- Preview -->
+        <section id="previewSection-excel-pdf" class="preview-section hidden">
+          <div class="preview-header">
+            <h2>PDFプレビュー</h2>
+            <span id="previewInfo-excel-pdf" class="preview-info"></span>
+          </div>
+          <div class="preview-container">
+            <iframe id="pdfPreview-excel-pdf" class="pdf-preview"></iframe>
+          </div>
+        </section>
+
+        <!-- Actions -->
+        <section id="actionsPanel-excel-pdf" class="actions-panel hidden">
+          <button id="convertBtn-excel-pdf" class="convert-btn">
+            <svg width="22" height="22" viewBox="0 0 22 22" fill="none">
+              <path d="M11 2v14M5 10l6 6 6-6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+              <path d="M2 16v2a2 2 0 002 2h14a2 2 0 002-2v-2" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+            </svg>
+            PDFに変換してダウンロード
+          </button>
+        </section>
+      </div>
+
+      <!-- ========== Panel 2: 画像 → PDF ========== -->
+      <div id="panel-image-pdf" class="tab-panel hidden">
+        <!-- Drop Zone -->
+        <section id="dropZone-image-pdf" class="drop-zone">
+          <div class="drop-zone-content">
+            <div class="drop-icon">
+              <svg width="64" height="64" viewBox="0 0 64 64" fill="none">
+                <path d="M32 8v32M20 28l12 12 12-12" stroke="url(#uploadGrad2)" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+                <path d="M8 44v8a4 4 0 004 4h40a4 4 0 004-4v-8" stroke="url(#uploadGrad2)" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+                <defs><linearGradient id="uploadGrad2" x1="8" y1="8" x2="56" y2="56"><stop stop-color="#6366f1"/><stop offset="1" stop-color="#a78bfa"/></linearGradient></defs>
+              </svg>
+            </div>
+            <p class="drop-text">画像ファイルをドラッグ＆ドロップ</p>
+            <p class="drop-subtext">または</p>
+            <label class="file-select-btn" for="fileInput-image-pdf">
+              <svg width="20" height="20" viewBox="0 0 20 20" fill="none"><path d="M10 4v12M4 10h12" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+              ファイルを選択
+            </label>
+            <input type="file" id="fileInput-image-pdf" accept=".jpg,.jpeg,.png,.webp,.gif,.bmp" multiple hidden>
+            <p class="drop-formats">JPG / PNG / WebP / GIF / BMP 対応（複数ファイル可）</p>
+          </div>
+          <div class="drop-zone-compact">
+            <svg width="20" height="20" viewBox="0 0 20 20" fill="none"><path d="M10 4v12M4 10h12" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+            <span>画像を追加</span>
+          </div>
+        </section>
+
+        <!-- 画像リスト -->
+        <section id="imageList-image-pdf" class="sheet-list hidden">
+          <div class="sheet-list-header">
+            <h2>画像一覧</h2>
+            <button id="clearAllImages-image-pdf" class="sheet-action-btn danger-btn">すべて削除</button>
+          </div>
+          <div id="imageGrid-image-pdf" class="image-grid"></div>
+        </section>
+
+        <!-- デフォルト設定 -->
+        <section id="defaultSettings-image-pdf" class="default-settings hidden">
+          <div class="default-settings-header">
+            <h2>出力設定</h2>
+          </div>
+          <div class="options-grid">
+            <div class="option-group">
+              <label for="pageSize-image-pdf">用紙サイズ</label>
+              <div class="select-wrapper">
+                <select id="pageSize-image-pdf">
+                  <option value="a4" selected>A4</option>
+                  <option value="a3">A3</option>
+                  <option value="letter">Letter</option>
+                  <option value="legal">Legal</option>
+                </select>
+              </div>
+            </div>
+            <div class="option-group">
+              <label for="orientation-image-pdf">向き</label>
+              <div class="select-wrapper">
+                <select id="orientation-image-pdf">
+                  <option value="auto" selected>自動（画像に合わせる）</option>
+                  <option value="portrait">縦（ポートレート）</option>
+                  <option value="landscape">横（ランドスケープ）</option>
+                </select>
+              </div>
+            </div>
+            <div class="option-group">
+              <label for="margin-image-pdf">余白 (mm)</label>
+              <div class="select-wrapper">
+                <select id="margin-image-pdf">
+                  <option value="0">なし (0mm)</option>
+                  <option value="5">小 (5mm)</option>
+                  <option value="10" selected>中 (10mm)</option>
+                  <option value="20">大 (20mm)</option>
+                </select>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <!-- Preview -->
+        <section id="previewSection-image-pdf" class="preview-section hidden">
+          <div class="preview-header">
+            <h2>PDFプレビュー</h2>
+            <span id="previewInfo-image-pdf" class="preview-info"></span>
+          </div>
+          <div class="preview-container">
+            <iframe id="pdfPreview-image-pdf" class="pdf-preview"></iframe>
+          </div>
+        </section>
+
+        <!-- Actions -->
+        <section id="actionsPanel-image-pdf" class="actions-panel hidden">
+          <button id="convertBtn-image-pdf" class="convert-btn">
+            <svg width="22" height="22" viewBox="0 0 22 22" fill="none">
+              <path d="M11 2v14M5 10l6 6 6-6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+              <path d="M2 16v2a2 2 0 002 2h14a2 2 0 002-2v-2" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+            </svg>
+            PDFに変換してダウンロード
+          </button>
+        </section>
+      </div>
+
+      <!-- ========== Panel 3: CSV ⇔ Excel ========== -->
+      <div id="panel-csv-excel" class="tab-panel hidden">
+        <!-- サブモード切替 -->
+        <div class="submode-toggle">
+          <button class="submode-btn active" data-submode="csv-to-excel">CSV → Excel</button>
+          <button class="submode-btn" data-submode="excel-to-csv">Excel → CSV</button>
+          <div class="submode-indicator"></div>
+        </div>
+
+        <!-- Sub: CSV → Excel -->
+        <div id="subpanel-csv-to-excel" class="subpanel">
+          <section id="dropZone-csv-to-excel" class="drop-zone">
+            <div class="drop-zone-content">
+              <div class="drop-icon">
+                <svg width="64" height="64" viewBox="0 0 64 64" fill="none">
+                  <path d="M32 8v32M20 28l12 12 12-12" stroke="url(#uploadGrad3)" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+                  <path d="M8 44v8a4 4 0 004 4h40a4 4 0 004-4v-8" stroke="url(#uploadGrad3)" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+                  <defs><linearGradient id="uploadGrad3" x1="8" y1="8" x2="56" y2="56"><stop stop-color="#6366f1"/><stop offset="1" stop-color="#a78bfa"/></linearGradient></defs>
+                </svg>
+              </div>
+              <p class="drop-text">CSVファイルをドラッグ＆ドロップ</p>
+              <p class="drop-subtext">または</p>
+              <label class="file-select-btn" for="fileInput-csv-to-excel">
+                <svg width="20" height="20" viewBox="0 0 20 20" fill="none"><path d="M10 4v12M4 10h12" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+                ファイルを選択
+              </label>
+              <input type="file" id="fileInput-csv-to-excel" accept=".csv,.tsv,.txt" hidden>
+              <p class="drop-formats">.csv / .tsv / .txt 対応</p>
+            </div>
+          </section>
+
+          <!-- オプション -->
+          <section id="options-csv-to-excel" class="default-settings hidden">
+            <div class="default-settings-header"><h2>変換オプション</h2></div>
+            <div class="options-grid">
+              <div class="option-group">
+                <label for="encoding-csv-to-excel">文字コード</label>
+                <div class="select-wrapper">
+                  <select id="encoding-csv-to-excel">
+                    <option value="auto" selected>自動検出</option>
+                    <option value="utf-8">UTF-8</option>
+                    <option value="shift_jis">Shift_JIS</option>
+                    <option value="euc-jp">EUC-JP</option>
+                  </select>
+                </div>
+              </div>
+              <div class="option-group">
+                <label for="delimiter-csv-to-excel">区切り文字</label>
+                <div class="select-wrapper">
+                  <select id="delimiter-csv-to-excel">
+                    <option value="auto" selected>自動検出</option>
+                    <option value=",">カンマ (,)</option>
+                    <option value="&#9;">タブ</option>
+                    <option value=";">セミコロン (;)</option>
+                  </select>
+                </div>
+              </div>
+            </div>
+          </section>
+
+          <!-- プレビュー -->
+          <section id="previewSection-csv-to-excel" class="preview-section hidden">
+            <div class="preview-header">
+              <h2>データプレビュー</h2>
+              <span id="previewInfo-csv-to-excel" class="preview-info"></span>
+            </div>
+            <div class="data-table-wrapper">
+              <table id="dataTable-csv-to-excel" class="data-table"></table>
+            </div>
+          </section>
+
+          <!-- Actions -->
+          <section id="actionsPanel-csv-to-excel" class="actions-panel hidden">
+            <button id="convertBtn-csv-to-excel" class="convert-btn">
+              <svg width="22" height="22" viewBox="0 0 22 22" fill="none">
+                <path d="M11 2v14M5 10l6 6 6-6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                <path d="M2 16v2a2 2 0 002 2h14a2 2 0 002-2v-2" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+              </svg>
+              Excelファイルとしてダウンロード
+            </button>
+          </section>
+        </div>
+
+        <!-- Sub: Excel → CSV -->
+        <div id="subpanel-excel-to-csv" class="subpanel hidden">
+          <section id="dropZone-excel-to-csv" class="drop-zone">
+            <div class="drop-zone-content">
+              <div class="drop-icon">
+                <svg width="64" height="64" viewBox="0 0 64 64" fill="none">
+                  <path d="M32 8v32M20 28l12 12 12-12" stroke="url(#uploadGrad4)" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+                  <path d="M8 44v8a4 4 0 004 4h40a4 4 0 004-4v-8" stroke="url(#uploadGrad4)" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+                  <defs><linearGradient id="uploadGrad4" x1="8" y1="8" x2="56" y2="56"><stop stop-color="#6366f1"/><stop offset="1" stop-color="#a78bfa"/></linearGradient></defs>
+                </svg>
+              </div>
+              <p class="drop-text">Excelファイルをドラッグ＆ドロップ</p>
+              <p class="drop-subtext">または</p>
+              <label class="file-select-btn" for="fileInput-excel-to-csv">
+                <svg width="20" height="20" viewBox="0 0 20 20" fill="none"><path d="M10 4v12M4 10h12" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+                ファイルを選択
+              </label>
+              <input type="file" id="fileInput-excel-to-csv" accept=".xlsx,.xls" hidden>
+              <p class="drop-formats">.xlsx / .xls 対応</p>
+            </div>
+          </section>
+
+          <!-- オプション -->
+          <section id="options-excel-to-csv" class="default-settings hidden">
+            <div class="default-settings-header"><h2>変換オプション</h2></div>
+            <div class="options-grid">
+              <div class="option-group">
+                <label for="sheet-excel-to-csv">シート</label>
+                <div class="select-wrapper">
+                  <select id="sheet-excel-to-csv"></select>
+                </div>
+              </div>
+              <div class="option-group">
+                <label for="encoding-excel-to-csv">出力文字コード</label>
+                <div class="select-wrapper">
+                  <select id="encoding-excel-to-csv">
+                    <option value="utf-8-bom" selected>UTF-8（BOM付き）</option>
+                    <option value="utf-8">UTF-8（BOMなし）</option>
+                  </select>
+                </div>
+              </div>
+              <div class="option-group">
+                <label for="delimiter-excel-to-csv">区切り文字</label>
+                <div class="select-wrapper">
+                  <select id="delimiter-excel-to-csv">
+                    <option value="," selected>カンマ (,)</option>
+                    <option value="&#9;">タブ</option>
+                    <option value=";">セミコロン (;)</option>
+                  </select>
+                </div>
+              </div>
+            </div>
+          </section>
+
+          <!-- プレビュー -->
+          <section id="previewSection-excel-to-csv" class="preview-section hidden">
+            <div class="preview-header">
+              <h2>データプレビュー</h2>
+              <span id="previewInfo-excel-to-csv" class="preview-info"></span>
+            </div>
+            <div class="data-table-wrapper">
+              <table id="dataTable-excel-to-csv" class="data-table"></table>
+            </div>
+          </section>
+
+          <!-- Actions -->
+          <section id="actionsPanel-excel-to-csv" class="actions-panel hidden">
+            <button id="convertBtn-excel-to-csv" class="convert-btn">
+              <svg width="22" height="22" viewBox="0 0 22 22" fill="none">
+                <path d="M11 2v14M5 10l6 6 6-6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                <path d="M2 16v2a2 2 0 002 2h14a2 2 0 002-2v-2" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+              </svg>
+              CSVファイルとしてダウンロード
+            </button>
+          </section>
+        </div>
+      </div>
+
+      <!-- ========== Panel 4: PDF 結合・分割 ========== -->
+      <div id="panel-pdf-tools" class="tab-panel hidden">
+        <!-- サブモード切替 -->
+        <div class="submode-toggle">
+          <button class="submode-btn active" data-submode="pdf-merge">PDF 結合</button>
+          <button class="submode-btn" data-submode="pdf-split">PDF 分割</button>
+          <div class="submode-indicator"></div>
+        </div>
+
+        <!-- Sub: PDF結合 -->
+        <div id="subpanel-pdf-merge" class="subpanel">
+          <section id="dropZone-pdf-merge" class="drop-zone">
+            <div class="drop-zone-content">
+              <div class="drop-icon">
+                <svg width="64" height="64" viewBox="0 0 64 64" fill="none">
+                  <path d="M32 8v32M20 28l12 12 12-12" stroke="url(#uploadGrad5)" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+                  <path d="M8 44v8a4 4 0 004 4h40a4 4 0 004-4v-8" stroke="url(#uploadGrad5)" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+                  <defs><linearGradient id="uploadGrad5" x1="8" y1="8" x2="56" y2="56"><stop stop-color="#6366f1"/><stop offset="1" stop-color="#a78bfa"/></linearGradient></defs>
+                </svg>
+              </div>
+              <p class="drop-text">PDFファイルをドラッグ＆ドロップ</p>
+              <p class="drop-subtext">または</p>
+              <label class="file-select-btn" for="fileInput-pdf-merge">
+                <svg width="20" height="20" viewBox="0 0 20 20" fill="none"><path d="M10 4v12M4 10h12" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+                ファイルを選択
+              </label>
+              <input type="file" id="fileInput-pdf-merge" accept=".pdf" multiple hidden>
+              <p class="drop-formats">.pdf 対応（複数ファイル可）</p>
+            </div>
+            <div class="drop-zone-compact">
+              <svg width="20" height="20" viewBox="0 0 20 20" fill="none"><path d="M10 4v12M4 10h12" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+              <span>PDFを追加</span>
+            </div>
+          </section>
+
+          <!-- PDFリスト -->
+          <section id="pdfList-pdf-merge" class="sheet-list hidden">
+            <div class="sheet-list-header">
+              <h2>PDFファイル一覧</h2>
+              <button id="clearAllPdfs-pdf-merge" class="sheet-action-btn danger-btn">すべて削除</button>
+            </div>
+            <div id="pdfListContainer-pdf-merge" class="sheet-list-container"></div>
+          </section>
+
+          <!-- Preview -->
+          <section id="previewSection-pdf-merge" class="preview-section hidden">
+            <div class="preview-header">
+              <h2>結合プレビュー</h2>
+              <span id="previewInfo-pdf-merge" class="preview-info"></span>
+            </div>
+            <div class="preview-container">
+              <iframe id="pdfPreview-pdf-merge" class="pdf-preview"></iframe>
+            </div>
+          </section>
+
+          <!-- Actions -->
+          <section id="actionsPanel-pdf-merge" class="actions-panel hidden">
+            <button id="convertBtn-pdf-merge" class="convert-btn">
+              <svg width="22" height="22" viewBox="0 0 22 22" fill="none">
+                <path d="M11 2v14M5 10l6 6 6-6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                <path d="M2 16v2a2 2 0 002 2h14a2 2 0 002-2v-2" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+              </svg>
+              結合してダウンロード
+            </button>
+          </section>
+        </div>
+
+        <!-- Sub: PDF分割 -->
+        <div id="subpanel-pdf-split" class="subpanel hidden">
+          <section id="dropZone-pdf-split" class="drop-zone">
+            <div class="drop-zone-content">
+              <div class="drop-icon">
+                <svg width="64" height="64" viewBox="0 0 64 64" fill="none">
+                  <path d="M32 8v32M20 28l12 12 12-12" stroke="url(#uploadGrad6)" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+                  <path d="M8 44v8a4 4 0 004 4h40a4 4 0 004-4v-8" stroke="url(#uploadGrad6)" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+                  <defs><linearGradient id="uploadGrad6" x1="8" y1="8" x2="56" y2="56"><stop stop-color="#6366f1"/><stop offset="1" stop-color="#a78bfa"/></linearGradient></defs>
+                </svg>
+              </div>
+              <p class="drop-text">PDFファイルをドラッグ＆ドロップ</p>
+              <p class="drop-subtext">または</p>
+              <label class="file-select-btn" for="fileInput-pdf-split">
+                <svg width="20" height="20" viewBox="0 0 20 20" fill="none"><path d="M10 4v12M4 10h12" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+                ファイルを選択
+              </label>
+              <input type="file" id="fileInput-pdf-split" accept=".pdf" hidden>
+              <p class="drop-formats">.pdf 対応（1ファイル）</p>
+            </div>
+          </section>
+
+          <!-- ページ範囲指定 -->
+          <section id="splitOptions-pdf-split" class="default-settings hidden">
+            <div class="default-settings-header">
+              <h2>ページ抽出設定</h2>
+              <span id="splitPageInfo-pdf-split" class="preview-info"></span>
+            </div>
+            <div class="option-group" style="max-width: 400px;">
+              <label for="pageRange-pdf-split">ページ範囲</label>
+              <input type="text" id="pageRange-pdf-split" class="text-input" placeholder="例: 1-3, 5, 7-10">
+              <p class="option-hint">カンマ区切りでページ番号や範囲を指定してください</p>
+            </div>
+          </section>
+
+          <!-- Preview -->
+          <section id="previewSection-pdf-split" class="preview-section hidden">
+            <div class="preview-header">
+              <h2>抽出プレビュー</h2>
+              <span id="previewInfo-pdf-split" class="preview-info"></span>
+            </div>
+            <div class="preview-container">
+              <iframe id="pdfPreview-pdf-split" class="pdf-preview"></iframe>
+            </div>
+          </section>
+
+          <!-- Actions -->
+          <section id="actionsPanel-pdf-split" class="actions-panel hidden">
+            <button id="convertBtn-pdf-split" class="convert-btn">
+              <svg width="22" height="22" viewBox="0 0 22 22" fill="none">
+                <path d="M11 2v14M5 10l6 6 6-6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                <path d="M2 16v2a2 2 0 002 2h14a2 2 0 002-2v-2" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+              </svg>
+              抽出してダウンロード
+            </button>
+          </section>
+        </div>
+      </div>
+
+    </div><!-- end tab-panels -->
+
+    <!-- 共通 Loading Overlay -->
+    <div id="loadingOverlay" class="loading-overlay hidden">
+      <div class="loading-content">
+        <div class="loading-spinner"></div>
+        <p class="loading-text">処理中...</p>
+        <div class="loading-bar">
+          <div id="loadingProgress" class="loading-bar-fill"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 共通 Toast -->
+    <div id="toast" class="toast"></div>
+  </main>
+
+  <!-- Libraries -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.5.31/jspdf.plugin.autotable.min.js"></script>
+  <script src="https://unpkg.com/pdf-lib@1.17.1/dist/pdf-lib.min.js"></script>
+
+  <!-- App -->
+  <script src="app.js"></script>
+  <script src="converter-excel-pdf.js"></script>
+  <script src="converter-image-pdf.js"></script>
+  <script src="converter-csv-excel.js"></script>
+  <script src="converter-pdf-tools.js"></script>
+</body>
+</html>
