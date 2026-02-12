@@ -99,7 +99,7 @@ const PdfToolsConverter = (() => {
             </svg>
           </div>
           <div class="sheet-info">
-            <span class="sheet-name">${pdf.name}</span>
+            <span class="sheet-name">${Utils.escapeHtml(pdf.name)}</span>
             <span class="sheet-file-name">${pdf.pageCount} ページ ・ ${Utils.formatFileSize(pdf.size)}</span>
           </div>
           <div class="sheet-card-actions">

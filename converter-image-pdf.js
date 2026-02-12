@@ -39,7 +39,7 @@ const ImagePdfConverter = (() => {
         };
         img.onerror = () => {
           URL.revokeObjectURL(thumbnailUrl);
-          Toast.show(`${file.name} の読み込みに失敗しました`, 'error');
+          Toast.show(`${Utils.escapeHtml(file.name)} の読み込みに失敗しました`, 'error');
           resolve();
         };
         img.src = e.target.result;
@@ -84,9 +84,9 @@ const ImagePdfConverter = (() => {
       card.dataset.imageId = img.id;
       card.draggable = true;
       card.innerHTML = `
-        <img class="image-card-thumbnail" src="${img.thumbnailUrl}" alt="${img.name}" loading="lazy">
+        <img class="image-card-thumbnail" src="${img.thumbnailUrl}" alt="${Utils.escapeHtml(img.name)}" loading="lazy">
         <div class="image-card-info">
-          <span class="image-card-name" title="${img.name}">${img.name}</span>
+          <span class="image-card-name" title="${Utils.escapeHtml(img.name)}">${Utils.escapeHtml(img.name)}</span>
           <span class="image-card-size">${img.width}×${img.height}</span>
         </div>
         <div class="image-card-actions">

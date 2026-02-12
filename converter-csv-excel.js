@@ -165,14 +165,14 @@ const CsvExcelConverter = (() => {
     const table = Utils.$('dataTable-csv-to-excel');
     let html = '<thead><tr>';
     if (previewData[0]) {
-      previewData[0].forEach((h, i) => { html += `<th>${escapeHtml(h || `列${i + 1}`)}</th>`; });
+      previewData[0].forEach((h, i) => { html += `<th>${Utils.escapeHtml(h || `列${i + 1}`)}</th>`; });
     }
     html += '</tr></thead><tbody>';
     for (let r = 1; r < previewData.length; r++) {
       html += '<tr>';
       const maxCols = previewData[0] ? previewData[0].length : 0;
       for (let c = 0; c < maxCols; c++) {
-        html += `<td>${escapeHtml(previewData[r] && previewData[r][c] !== undefined ? previewData[r][c] : '')}</td>`;
+        html += `<td>${Utils.escapeHtml(previewData[r] && previewData[r][c] !== undefined ? previewData[r][c] : '')}</td>`;
       }
       html += '</tr>';
     }
@@ -258,14 +258,14 @@ const CsvExcelConverter = (() => {
     const table = Utils.$('dataTable-excel-to-csv');
     let html = '<thead><tr>';
     if (previewData[0]) {
-      previewData[0].forEach((h, i) => { html += `<th>${escapeHtml(String(h || `列${i + 1}`))}</th>`; });
+      previewData[0].forEach((h, i) => { html += `<th>${Utils.escapeHtml(String(h || `列${i + 1}`))}</th>`; });
     }
     html += '</tr></thead><tbody>';
     for (let r = 1; r < previewData.length; r++) {
       html += '<tr>';
       const maxCols = previewData[0] ? previewData[0].length : 0;
       for (let c = 0; c < maxCols; c++) {
-        html += `<td>${escapeHtml(String(previewData[r] && previewData[r][c] !== undefined ? previewData[r][c] : ''))}</td>`;
+        html += `<td>${Utils.escapeHtml(String(previewData[r] && previewData[r][c] !== undefined ? previewData[r][c] : ''))}</td>`;
       }
       html += '</tr>';
     }
@@ -306,13 +306,6 @@ const CsvExcelConverter = (() => {
       Toast.show('変換中にエラーが発生しました', 'error');
       console.error(err);
     }
-  }
-
-  // ── Utility ──
-  function escapeHtml(str) {
-    const div = document.createElement('div');
-    div.textContent = str;
-    return div.innerHTML;
   }
 
   // ── Init ──

@@ -33,6 +33,11 @@ const Utils = {
   $(id) {
     return document.getElementById(id);
   },
+
+  escapeHtml(str) {
+    const map = { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' };
+    return String(str).replace(/[&<>"']/g, (c) => map[c]);
+  },
 };
 
 // ==========================================

@@ -118,7 +118,7 @@ const ExcelPdfConverter = (() => {
             <path d="M5 5h6M5 8h6M5 11h3" stroke="currentColor" stroke-width="1" stroke-linecap="round"/>
           </svg>
         </span>
-        <span class="file-chip-name" title="${file.name}">${file.name}</span>
+        <span class="file-chip-name" title="${Utils.escapeHtml(file.name)}">${Utils.escapeHtml(file.name)}</span>
         <span class="file-chip-size">${Utils.formatFileSize(file.size)}</span>
         <button class="file-chip-remove" title="削除" data-file-id="${file.id}">
           <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
@@ -182,8 +182,8 @@ const ExcelPdfConverter = (() => {
           </div>
           <input type="checkbox" class="sheet-checkbox" ${sheet.selected ? 'checked' : ''} data-sheet-id="${sheet.id}">
           <div class="sheet-info">
-            <span class="sheet-name">${sheet.sheetName}</span>
-            ${multipleFiles && file ? `<span class="sheet-file-name">${file.name}</span>` : ''}
+            <span class="sheet-name">${Utils.escapeHtml(sheet.sheetName)}</span>
+            ${multipleFiles && file ? `<span class="sheet-file-name">${Utils.escapeHtml(file.name)}</span>` : ''}
           </div>
           <div class="sheet-badges">
             <span class="sheet-badge">${pageSizeLabel}</span>
