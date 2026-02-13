@@ -1,14 +1,84 @@
 /**
  * PDF 結合・分割 コンバーター
- * pdf-lib を使用。結合と分割（ページ抽出）のサブモード切替
- * ページレベルの並べ替え・選択機能付き
+ * pdf-lib (操作) + pdf.js (サムネイルレンダリング)
+ * CubePDF Utility風のサムネイルベースUI
  */
 const PdfToolsConverter = (() => {
   const panel = Utils.$('panel-pdf-tools');
   const { PDFDocument } = PDFLib;
 
+  // pdf.js が利用可能か
+  const hasPdfJs = typeof pdfjsLib !== 'undefined';
+  if (hasPdfJs) {
+    pdfjsLib.GlobalWorkerOptions.workerSrc =
+      'https://unpkg.com/pdfjs-dist@3.11.174/build/pdf.worker.min.js';
+  }
+
   let _pageUidCounter = 0;
   function nextPageUid() { return ++_pageUidCounter; }
+
+  // ── SVG定数 ──
+  const DRAG_HANDLE_SVG = `<svg width="14" height="14" viewBox="0 0 14 14" fill="none"><circle cx="4" cy="3" r="1.2" fill="currentColor"/><circle cx="10" cy="3" r="1.2" fill="currentColor"/><circle cx="4" cy="7" r="1.2" fill="currentColor"/><circle cx="10" cy="7" r="1.2" fill="currentColor"/><circle cx="4" cy="11" r="1.2" fill="currentColor"/><circle cx="10" cy="11" r="1.2" fill="currentColor"/></svg>`;
+  const UP_SVG = `<svg width="14" height="14" viewBox="0 0 14 14" fill="none"><path d="M7 2v10M3 6l4-4 4 4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
+  const DOWN_SVG = `<svg width="14" height="14" viewBox="0 0 14 14" fill="none"><path d="M7 12V2M3 8l4 4 4-4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
+  const REMOVE_SVG = `<svg width="14" height="14" viewBox="0 0 14 14" fill="none"><path d="M3 3l8 8M11 3l-8 8" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>`;
+
+  // ==========================================
+  // サムネイルレンダラー (pdf.js)
+  // ==========================================
+  const PageThumbnail = {
+    _cache: new Map(),     // "cacheKey_pageIdx" -> dataURL
+    _docCache: new Map(),  // cacheKey -> Promise<PDFDocumentProxy>
+
+    _getDoc(cacheKey, data) {
+      if (!this._docCache.has(cacheKey)) {
+        this._docCache.set(cacheKey,
+          pdfjsLib.getDocument({ data: data.slice(0) }).promise
+        );
+      }
+      return this._docCache.get(cacheKey);
+    },
+
+    async render(cacheKey, pdfData, pageIndex, width) {
+      width = width || 180;
+      const key = `${cacheKey}_${pageIndex}`;
+      if (this._cache.has(key)) return this._cache.get(key);
+
+      const doc = await this._getDoc(cacheKey, pdfData);
+      const page = await doc.getPage(pageIndex + 1);
+      const vp = page.getViewport({ scale: 1 });
+      const scale = width / vp.width;
+      const svp = page.getViewport({ scale });
+
+      const canvas = document.createElement('canvas');
+      canvas.width = Math.floor(svp.width);
+      canvas.height = Math.floor(svp.height);
+      await page.render({
+        canvasContext: canvas.getContext('2d'),
+        viewport: svp,
+      }).promise;
+
+      const dataUrl = canvas.toDataURL('image/jpeg', 0.75);
+      this._cache.set(key, dataUrl);
+      return dataUrl;
+    },
+
+    getCached(cacheKey, pageIndex) {
+      return this._cache.get(`${cacheKey}_${pageIndex}`) || null;
+    },
+
+    clearForKey(prefix) {
+      for (const k of [...this._cache.keys()]) {
+        if (k.startsWith(`${prefix}_`)) this._cache.delete(k);
+      }
+      this._docCache.delete(prefix);
+    },
+
+    clearAll() {
+      this._cache.clear();
+      this._docCache.clear();
+    },
+  };
 
   // ── サブモード管理 ──
   const submodeToggle = panel.querySelector('.submode-toggle');
@@ -21,7 +91,6 @@ const PdfToolsConverter = (() => {
         submodeButtons.forEach((b) => b.classList.remove('active'));
         btn.classList.add('active');
         submodeToggle.dataset.activeIndex = idx;
-
         panel.querySelectorAll('.subpanel').forEach((sp) => sp.classList.add('hidden'));
         Utils.$(`subpanel-${mode}`).classList.remove('hidden');
       });
@@ -32,7 +101,7 @@ const PdfToolsConverter = (() => {
   // PDF 結合
   // ==========================================
   const mergeState = {
-    pdfs: [],    // { id, name, size, data (Uint8Array), pageCount, expanded }
+    pdfs: [],    // { id, name, size, data (Uint8Array), pageCount }
     pages: [],   // { uid, pdfId, pageIndex (0-based), label }
     idCounter: 0,
     previewUrl: null,
@@ -65,11 +134,9 @@ const PdfToolsConverter = (() => {
           size: file.size,
           data,
           pageCount: pdfDoc.getPageCount(),
-          expanded: false,
         };
         mergeState.pdfs.push(pdf);
-        const newPages = buildPagesForPdf(pdf);
-        mergeState.pages.push(...newPages);
+        mergeState.pages.push(...buildPagesForPdf(pdf));
       }
       showMergeUI();
     } catch (err) {
@@ -84,9 +151,11 @@ const PdfToolsConverter = (() => {
     if (mergeState.pdfs.length === 0) return;
     Utils.$('dropZone-pdf-merge').classList.add('compact');
     Utils.$('pdfList-pdf-merge').classList.remove('hidden');
+    Utils.$('pageThumbnails-pdf-merge').classList.remove('hidden');
     if (mergeOptions) mergeOptions.show();
     Utils.$('actionsPanel-pdf-merge').classList.remove('hidden');
-    renderMergeList();
+    renderMergeFileList();
+    renderMergeThumbnailGrid();
     debouncedMergePreview();
   }
 
@@ -98,199 +167,50 @@ const PdfToolsConverter = (() => {
 
     Utils.$('dropZone-pdf-merge').classList.remove('compact');
     Utils.$('pdfList-pdf-merge').classList.add('hidden');
+    Utils.$('pageThumbnails-pdf-merge').classList.add('hidden');
     if (mergeOptions) mergeOptions.hide();
     Utils.$('previewSection-pdf-merge').classList.add('hidden');
     Utils.$('actionsPanel-pdf-merge').classList.add('hidden');
     Utils.$('pdfListContainer-pdf-merge').innerHTML = '';
+    Utils.$('pageThumbnailGrid-pdf-merge').innerHTML = '';
+    PageThumbnail.clearAll();
   }
 
-  // ── ドラッグハンドル用SVG ──
-  const DRAG_HANDLE_SVG = `<svg width="14" height="14" viewBox="0 0 14 14" fill="none">
-    <circle cx="4" cy="3" r="1.2" fill="currentColor"/>
-    <circle cx="10" cy="3" r="1.2" fill="currentColor"/>
-    <circle cx="4" cy="7" r="1.2" fill="currentColor"/>
-    <circle cx="10" cy="7" r="1.2" fill="currentColor"/>
-    <circle cx="4" cy="11" r="1.2" fill="currentColor"/>
-    <circle cx="10" cy="11" r="1.2" fill="currentColor"/>
-  </svg>`;
-  const UP_SVG = `<svg width="14" height="14" viewBox="0 0 14 14" fill="none"><path d="M7 2v10M3 6l4-4 4 4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
-  const DOWN_SVG = `<svg width="14" height="14" viewBox="0 0 14 14" fill="none"><path d="M7 12V2M3 8l4 4 4-4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
-  const REMOVE_SVG = `<svg width="14" height="14" viewBox="0 0 14 14" fill="none"><path d="M3 3l8 8M11 3l-8 8" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>`;
-  const EXPAND_SVG = `<svg width="14" height="14" viewBox="0 0 14 14" fill="none"><path d="M3 5l4 4 4-4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
-  const COLLAPSE_SVG = `<svg width="14" height="14" viewBox="0 0 14 14" fill="none"><path d="M3 9l4-4 4 4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
-
-  function renderMergeList() {
+  // ── ファイル一覧（シンプル版: 展開なし） ──
+  function renderMergeFileList() {
     const container = Utils.$('pdfListContainer-pdf-merge');
     container.innerHTML = '';
 
     mergeState.pdfs.forEach((pdf, idx) => {
-      const pdfPages = mergeState.pages.filter((p) => p.pdfId === pdf.id);
+      const pdfPageCount = mergeState.pages.filter((p) => p.pdfId === pdf.id).length;
       const card = document.createElement('div');
       card.className = 'sheet-card';
       card.dataset.pdfId = pdf.id;
       card.draggable = true;
-
       card.innerHTML = `
         <div class="sheet-card-main">
           <div class="sheet-drag-handle" title="ドラッグして並び替え">${DRAG_HANDLE_SVG}</div>
           <div class="sheet-info">
             <span class="sheet-name">${Utils.escapeHtml(pdf.name)}</span>
-            <span class="sheet-file-name">${pdfPages.length} / ${pdf.pageCount} ページ ・ ${Utils.formatFileSize(pdf.size)}</span>
+            <span class="sheet-file-name">${pdfPageCount} / ${pdf.pageCount} ページ ・ ${Utils.formatFileSize(pdf.size)}</span>
           </div>
           <div class="sheet-card-actions">
-            <button class="sheet-btn expand-toggle-btn" title="${pdf.expanded ? '閉じる' : 'ページ展開'}" data-pdf-id="${pdf.id}">
-              ${pdf.expanded ? COLLAPSE_SVG : EXPAND_SVG}
-            </button>
             <button class="sheet-btn move-up-btn" title="上に移動" ${idx === 0 ? 'disabled' : ''} data-pdf-id="${pdf.id}">${UP_SVG}</button>
             <button class="sheet-btn move-down-btn" title="下に移動" ${idx === mergeState.pdfs.length - 1 ? 'disabled' : ''} data-pdf-id="${pdf.id}">${DOWN_SVG}</button>
             <button class="sheet-btn danger-remove-btn" title="削除" data-pdf-id="${pdf.id}">${REMOVE_SVG}</button>
           </div>
         </div>
-        <div class="page-expand-area ${pdf.expanded ? 'open' : ''}" data-pdf-id="${pdf.id}">
-          <div class="page-grid" data-pdf-id="${pdf.id}"></div>
-        </div>
       `;
       container.appendChild(card);
-
-      if (pdf.expanded) {
-        renderMergePageGrid(card.querySelector(`.page-grid[data-pdf-id="${pdf.id}"]`), pdf.id);
-      }
     });
 
-    bindMergeEvents();
+    bindMergeFileEvents();
   }
 
-  function renderMergePageGrid(gridEl, pdfId) {
-    gridEl.innerHTML = '';
-    const pdfPages = mergeState.pages.filter((p) => p.pdfId === pdfId);
+  let _draggedFilePdfId = null;
 
-    pdfPages.forEach((page, idx) => {
-      const card = document.createElement('div');
-      card.className = 'page-card';
-      card.dataset.pageUid = page.uid;
-      card.draggable = true;
-      card.innerHTML = `
-        <span class="page-card-number">${page.pageIndex + 1}</span>
-        <span class="page-card-label">P${page.pageIndex + 1}</span>
-        <div class="page-card-actions">
-          <button class="sheet-btn page-move-up-btn" title="上に移動" ${idx === 0 ? 'disabled' : ''} data-page-uid="${page.uid}">
-            ${UP_SVG}
-          </button>
-          <button class="sheet-btn page-move-down-btn" title="下に移動" ${idx === pdfPages.length - 1 ? 'disabled' : ''} data-page-uid="${page.uid}">
-            ${DOWN_SVG}
-          </button>
-          <button class="sheet-btn danger-remove-btn page-remove-btn" title="削除" data-page-uid="${page.uid}">
-            ${REMOVE_SVG}
-          </button>
-        </div>
-      `;
-      gridEl.appendChild(card);
-    });
-
-    bindMergePageEvents(gridEl, pdfId);
-  }
-
-  let draggedMergePageUid = null;
-
-  function bindMergePageEvents(gridEl, pdfId) {
-    gridEl.querySelectorAll('.page-move-up-btn').forEach((btn) => {
-      btn.addEventListener('click', (e) => {
-        e.stopPropagation();
-        const uid = parseInt(btn.dataset.pageUid, 10);
-        const idx = mergeState.pages.findIndex((p) => p.uid === uid);
-        // Find previous page in same pdf
-        const pdfPages = mergeState.pages.filter((p) => p.pdfId === pdfId);
-        const localIdx = pdfPages.findIndex((p) => p.uid === uid);
-        if (localIdx <= 0) return;
-        const prevUid = pdfPages[localIdx - 1].uid;
-        const prevGlobalIdx = mergeState.pages.findIndex((p) => p.uid === prevUid);
-        [mergeState.pages[prevGlobalIdx], mergeState.pages[idx]] = [mergeState.pages[idx], mergeState.pages[prevGlobalIdx]];
-        renderMergeList();
-        debouncedMergePreview();
-      });
-    });
-
-    gridEl.querySelectorAll('.page-move-down-btn').forEach((btn) => {
-      btn.addEventListener('click', (e) => {
-        e.stopPropagation();
-        const uid = parseInt(btn.dataset.pageUid, 10);
-        const idx = mergeState.pages.findIndex((p) => p.uid === uid);
-        const pdfPages = mergeState.pages.filter((p) => p.pdfId === pdfId);
-        const localIdx = pdfPages.findIndex((p) => p.uid === uid);
-        if (localIdx >= pdfPages.length - 1) return;
-        const nextUid = pdfPages[localIdx + 1].uid;
-        const nextGlobalIdx = mergeState.pages.findIndex((p) => p.uid === nextUid);
-        [mergeState.pages[idx], mergeState.pages[nextGlobalIdx]] = [mergeState.pages[nextGlobalIdx], mergeState.pages[idx]];
-        renderMergeList();
-        debouncedMergePreview();
-      });
-    });
-
-    gridEl.querySelectorAll('.page-remove-btn').forEach((btn) => {
-      btn.addEventListener('click', (e) => {
-        e.stopPropagation();
-        const uid = parseInt(btn.dataset.pageUid, 10);
-        mergeState.pages = mergeState.pages.filter((p) => p.uid !== uid);
-        renderMergeList();
-        debouncedMergePreview();
-      });
-    });
-
-    // Page-level drag & drop within grid
-    gridEl.querySelectorAll('.page-card').forEach((card) => {
-      card.addEventListener('dragstart', (e) => {
-        e.stopPropagation();
-        draggedMergePageUid = parseInt(card.dataset.pageUid, 10);
-        card.classList.add('dragging');
-        e.dataTransfer.effectAllowed = 'move';
-        e.dataTransfer.setData('text/plain', 'page-' + card.dataset.pageUid);
-      });
-      card.addEventListener('dragend', () => {
-        card.classList.remove('dragging');
-        draggedMergePageUid = null;
-        gridEl.querySelectorAll('.page-card').forEach((c) => c.classList.remove('drag-over-card'));
-      });
-      card.addEventListener('dragover', (e) => {
-        e.preventDefault();
-        e.stopPropagation();
-        e.dataTransfer.dropEffect = 'move';
-        if (draggedMergePageUid !== null && draggedMergePageUid !== parseInt(card.dataset.pageUid, 10)) {
-          card.classList.add('drag-over-card');
-        }
-      });
-      card.addEventListener('dragleave', () => card.classList.remove('drag-over-card'));
-      card.addEventListener('drop', (e) => {
-        e.preventDefault();
-        e.stopPropagation();
-        card.classList.remove('drag-over-card');
-        const targetUid = parseInt(card.dataset.pageUid, 10);
-        if (draggedMergePageUid === null || draggedMergePageUid === targetUid) return;
-        const fromIdx = mergeState.pages.findIndex((p) => p.uid === draggedMergePageUid);
-        const toIdx = mergeState.pages.findIndex((p) => p.uid === targetUid);
-        if (fromIdx === -1 || toIdx === -1) return;
-        const [moved] = mergeState.pages.splice(fromIdx, 1);
-        mergeState.pages.splice(toIdx, 0, moved);
-        renderMergeList();
-        debouncedMergePreview();
-      });
-    });
-  }
-
-  let draggedPdfId = null;
-
-  function bindMergeEvents() {
+  function bindMergeFileEvents() {
     const container = Utils.$('pdfListContainer-pdf-merge');
-
-    container.querySelectorAll('.expand-toggle-btn').forEach((btn) => {
-      btn.addEventListener('click', () => {
-        const pdfId = parseInt(btn.dataset.pdfId, 10);
-        const pdf = mergeState.pdfs.find((p) => p.id === pdfId);
-        if (pdf) {
-          pdf.expanded = !pdf.expanded;
-          renderMergeList();
-        }
-      });
-    });
 
     container.querySelectorAll('.move-up-btn').forEach((btn) => {
       btn.addEventListener('click', () => {
@@ -298,7 +218,9 @@ const PdfToolsConverter = (() => {
         if (idx > 0) {
           [mergeState.pdfs[idx - 1], mergeState.pdfs[idx]] = [mergeState.pdfs[idx], mergeState.pdfs[idx - 1]];
           reorderPagesForFiles();
-          renderMergeList(); debouncedMergePreview();
+          renderMergeFileList();
+          renderMergeThumbnailGrid();
+          debouncedMergePreview();
         }
       });
     });
@@ -309,61 +231,64 @@ const PdfToolsConverter = (() => {
         if (idx < mergeState.pdfs.length - 1) {
           [mergeState.pdfs[idx], mergeState.pdfs[idx + 1]] = [mergeState.pdfs[idx + 1], mergeState.pdfs[idx]];
           reorderPagesForFiles();
-          renderMergeList(); debouncedMergePreview();
+          renderMergeFileList();
+          renderMergeThumbnailGrid();
+          debouncedMergePreview();
         }
       });
     });
 
-    container.querySelectorAll(':scope > .sheet-card > .sheet-card-main > .sheet-card-actions > .danger-remove-btn').forEach((btn) => {
+    container.querySelectorAll('.danger-remove-btn').forEach((btn) => {
       btn.addEventListener('click', () => {
         const pdfId = parseInt(btn.dataset.pdfId, 10);
         mergeState.pdfs = mergeState.pdfs.filter((p) => p.id !== pdfId);
         mergeState.pages = mergeState.pages.filter((p) => p.pdfId !== pdfId);
-        if (mergeState.pdfs.length === 0) { resetMerge(); } else { renderMergeList(); debouncedMergePreview(); }
+        if (hasPdfJs) PageThumbnail.clearForKey(`merge_${pdfId}`);
+        if (mergeState.pdfs.length === 0) {
+          resetMerge();
+        } else {
+          renderMergeFileList();
+          renderMergeThumbnailGrid();
+          debouncedMergePreview();
+        }
       });
     });
 
-    // File-level Drag & Drop
-    container.querySelectorAll(':scope > .sheet-card').forEach((card) => {
+    // ファイルレベル ドラッグ&ドロップ
+    container.querySelectorAll('.sheet-card').forEach((card) => {
       card.addEventListener('dragstart', (e) => {
-        // Only handle file-level drag if started from handle
-        if (e.target.closest('.page-card')) return;
-        draggedPdfId = parseInt(card.dataset.pdfId, 10);
+        _draggedFilePdfId = parseInt(card.dataset.pdfId, 10);
         card.classList.add('dragging');
         e.dataTransfer.effectAllowed = 'move';
         e.dataTransfer.setData('text/plain', 'file-' + card.dataset.pdfId);
       });
       card.addEventListener('dragend', () => {
         card.classList.remove('dragging');
-        draggedPdfId = null;
+        _draggedFilePdfId = null;
         container.querySelectorAll('.sheet-card').forEach((c) => c.classList.remove('drag-over-card'));
       });
       card.addEventListener('dragover', (e) => {
-        if (e.target.closest('.page-card') || e.target.closest('.page-grid')) return;
         e.preventDefault();
         e.dataTransfer.dropEffect = 'move';
-        if (draggedPdfId !== null && draggedPdfId !== parseInt(card.dataset.pdfId, 10)) {
+        if (_draggedFilePdfId !== null && _draggedFilePdfId !== parseInt(card.dataset.pdfId, 10)) {
           card.classList.add('drag-over-card');
         }
       });
-      card.addEventListener('dragleave', (e) => {
-        if (!card.contains(e.relatedTarget)) {
-          card.classList.remove('drag-over-card');
-        }
-      });
+      card.addEventListener('dragleave', () => card.classList.remove('drag-over-card'));
       card.addEventListener('drop', (e) => {
-        if (e.target.closest('.page-card') || e.target.closest('.page-grid')) return;
         e.preventDefault();
         card.classList.remove('drag-over-card');
         const targetId = parseInt(card.dataset.pdfId, 10);
-        if (draggedPdfId === null || draggedPdfId === targetId) return;
-        const fromIdx = mergeState.pdfs.findIndex((p) => p.id === draggedPdfId);
+        if (_draggedFilePdfId === null || _draggedFilePdfId === targetId) return;
+        const fromIdx = mergeState.pdfs.findIndex((p) => p.id === _draggedFilePdfId);
         const toIdx = mergeState.pdfs.findIndex((p) => p.id === targetId);
         if (fromIdx === -1 || toIdx === -1) return;
         const [moved] = mergeState.pdfs.splice(fromIdx, 1);
         mergeState.pdfs.splice(toIdx, 0, moved);
         reorderPagesForFiles();
-        renderMergeList(); debouncedMergePreview();
+        renderMergeFileList();
+        renderMergeThumbnailGrid();
+        debouncedMergePreview();
       });
     });
   }
@@ -371,12 +296,135 @@ const PdfToolsConverter = (() => {
   function reorderPagesForFiles() {
     const reordered = [];
     for (const pdf of mergeState.pdfs) {
-      const pdfPages = mergeState.pages.filter((p) => p.pdfId === pdf.id);
-      reordered.push(...pdfPages);
+      reordered.push(...mergeState.pages.filter((p) => p.pdfId === pdf.id));
     }
     mergeState.pages = reordered;
   }
 
+  // ── 統一サムネイルグリッド（全ページ表示） ──
+  let _mergeThumbGen = 0;
+  let _draggedMergeThumbUid = null;
+
+  function renderMergeThumbnailGrid() {
+    const container = Utils.$('pageThumbnailGrid-pdf-merge');
+    container.innerHTML = '';
+
+    const info = Utils.$('pageThumbnailInfo-pdf-merge');
+    info.textContent = `${mergeState.pdfs.length} ファイル・${mergeState.pages.length} ページ`;
+
+    mergeState.pages.forEach((page) => {
+      const pdf = mergeState.pdfs.find((p) => p.id === page.pdfId);
+      if (!pdf) return;
+
+      const cacheKey = `merge_${pdf.id}`;
+      const cached = hasPdfJs ? PageThumbnail.getCached(cacheKey, page.pageIndex) : null;
+
+      const card = document.createElement('div');
+      card.className = 'page-thumb-card';
+      card.dataset.pageUid = page.uid;
+      card.draggable = true;
+      card.innerHTML = `
+        <div class="page-thumb-img-wrap">
+          <span class="page-thumb-placeholder${hasPdfJs ? ' page-thumb-loading' : ''}" ${cached ? 'style="display:none"' : ''}>${page.pageIndex + 1}</span>
+          <img class="page-thumb-img" ${cached ? `src="${cached}"` : 'style="display:none"'} alt="P${page.pageIndex + 1}">
+        </div>
+        <div class="page-thumb-info">
+          <span class="page-thumb-label" title="${Utils.escapeHtml(pdf.name)}">${Utils.escapeHtml(pdf.name)}</span>
+          <span class="page-thumb-page-num">P${page.pageIndex + 1}</span>
+        </div>
+        <button class="page-thumb-delete" title="削除" data-page-uid="${page.uid}">\u00D7</button>
+      `;
+      container.appendChild(card);
+    });
+
+    bindMergeThumbnailEvents();
+    if (hasPdfJs) renderMergeThumbnailsAsync();
+  }
+
+  async function renderMergeThumbnailsAsync() {
+    const gen = ++_mergeThumbGen;
+
+    for (const page of mergeState.pages) {
+      if (gen !== _mergeThumbGen) return;
+
+      const pdf = mergeState.pdfs.find((p) => p.id === page.pdfId);
+      if (!pdf) continue;
+
+      const cacheKey = `merge_${pdf.id}`;
+      if (PageThumbnail.getCached(cacheKey, page.pageIndex)) continue;
+
+      try {
+        const dataUrl = await PageThumbnail.render(cacheKey, pdf.data, page.pageIndex);
+        if (gen !== _mergeThumbGen) return;
+
+        const card = document.querySelector(`#pageThumbnailGrid-pdf-merge [data-page-uid="${page.uid}"]`);
+        if (card) {
+          const img = card.querySelector('.page-thumb-img');
+          const ph = card.querySelector('.page-thumb-placeholder');
+          if (img) { img.src = dataUrl; img.style.display = 'block'; }
+          if (ph) ph.style.display = 'none';
+        }
+      } catch (err) {
+        console.warn('Merge thumbnail render failed:', page.pageIndex, err);
+      }
+
+      await new Promise((r) => setTimeout(r, 10));
+    }
+  }
+
+  function bindMergeThumbnailEvents() {
+    const container = Utils.$('pageThumbnailGrid-pdf-merge');
+
+    // 削除ボタン
+    container.querySelectorAll('.page-thumb-delete').forEach((btn) => {
+      btn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const uid = parseInt(btn.dataset.pageUid, 10);
+        mergeState.pages = mergeState.pages.filter((p) => p.uid !== uid);
+        renderMergeFileList();
+        renderMergeThumbnailGrid();
+        debouncedMergePreview();
+      });
+    });
+
+    // ドラッグ&ドロップ
+    container.querySelectorAll('.page-thumb-card').forEach((card) => {
+      card.addEventListener('dragstart', (e) => {
+        _draggedMergeThumbUid = parseInt(card.dataset.pageUid, 10);
+        card.classList.add('dragging');
+        e.dataTransfer.effectAllowed = 'move';
+        e.dataTransfer.setData('text/plain', 'mpage-' + card.dataset.pageUid);
+      });
+      card.addEventListener('dragend', () => {
+        card.classList.remove('dragging');
+        _draggedMergeThumbUid = null;
+        container.querySelectorAll('.page-thumb-card').forEach((c) => c.classList.remove('drag-over-card'));
+      });
+      card.addEventListener('dragover', (e) => {
+        e.preventDefault();
+        e.dataTransfer.dropEffect = 'move';
+        if (_draggedMergeThumbUid !== null && _draggedMergeThumbUid !== parseInt(card.dataset.pageUid, 10)) {
+          card.classList.add('drag-over-card');
+        }
+      });
+      card.addEventListener('dragleave', () => card.classList.remove('drag-over-card'));
+      card.addEventListener('drop', (e) => {
+        e.preventDefault();
+        card.classList.remove('drag-over-card');
+        const targetUid = parseInt(card.dataset.pageUid, 10);
+        if (_draggedMergeThumbUid === null || _draggedMergeThumbUid === targetUid) return;
+        const fromIdx = mergeState.pages.findIndex((p) => p.uid === _draggedMergeThumbUid);
+        const toIdx = mergeState.pages.findIndex((p) => p.uid === targetUid);
+        if (fromIdx === -1 || toIdx === -1) return;
+        const [moved] = mergeState.pages.splice(fromIdx, 1);
+        mergeState.pages.splice(toIdx, 0, moved);
+        renderMergeThumbnailGrid();
+        debouncedMergePreview();
+      });
+    });
+  }
+
+  // ── PDF結合ロジック ──
   function _applyMetadata(pdfDoc, opts) {
     if (opts.title) pdfDoc.setTitle(opts.title);
     if (opts.author) pdfDoc.setAuthor(opts.author);
@@ -388,13 +436,11 @@ const PdfToolsConverter = (() => {
     if (mergeState.pages.length === 0) return null;
     const merged = await PDFDocument.create();
 
-    // Cache loaded source PDFs
     const pdfCache = new Map();
     for (const pdf of mergeState.pdfs) {
       pdfCache.set(pdf.id, await PDFDocument.load(pdf.data, { ignoreEncryption: true }));
     }
 
-    // Copy pages one by one in pages[] order
     for (const page of mergeState.pages) {
       const srcDoc = pdfCache.get(page.pdfId);
       if (!srcDoc) continue;
@@ -402,9 +448,7 @@ const PdfToolsConverter = (() => {
       merged.addPage(copiedPage);
     }
 
-    if (mergeOptions) {
-      _applyMetadata(merged, mergeOptions.getOptions());
-    }
+    if (mergeOptions) _applyMetadata(merged, mergeOptions.getOptions());
     return merged;
   }
 
@@ -423,7 +467,6 @@ const PdfToolsConverter = (() => {
       mergeState.previewUrl = URL.createObjectURL(blob);
       pdfPreview.src = mergeState.previewUrl;
       Utils.$('previewSection-pdf-merge').classList.remove('hidden');
-
       previewInfo.textContent = `${mergeState.pdfs.length} ファイル・${mergeState.pages.length} ページ`;
     } catch (err) {
       previewInfo.textContent = '結合に失敗しました';
@@ -442,8 +485,7 @@ const PdfToolsConverter = (() => {
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
-      const baseNames = mergeState.pdfs.map((p) => Utils.getBaseName(p.name));
-      a.download = Utils.buildDownloadName(baseNames, 'pdf');
+      a.download = Utils.buildDownloadName(mergeState.pdfs.map((p) => Utils.getBaseName(p.name)), 'pdf');
       document.body.appendChild(a);
       a.click();
       document.body.removeChild(a);
@@ -464,12 +506,12 @@ const PdfToolsConverter = (() => {
     fileName: null,
     data: null,
     pageCount: 0,
-    selectedPages: [],  // { uid, pageIndex (0-based), selected: true/false }
+    selectedPages: [], // { uid, pageIndex (0-based), selected }
     previewUrl: null,
   };
 
   let splitOptions = null;
-  let _splitSyncing = false; // 無限ループ防止フラグ
+  let _splitSyncing = false;
 
   async function handleSplitFile(files) {
     const file = files[0];
@@ -478,18 +520,14 @@ const PdfToolsConverter = (() => {
 
     Loading.show('PDFを読み込み中...');
     try {
+      if (hasPdfJs) PageThumbnail.clearForKey('split');
       splitState.data = new Uint8Array(await file.arrayBuffer());
       const pdfDoc = await PDFDocument.load(splitState.data, { ignoreEncryption: true });
       splitState.pageCount = pdfDoc.getPageCount();
 
-      // Initialize selectedPages (all selected, in order)
       splitState.selectedPages = [];
       for (let i = 0; i < splitState.pageCount; i++) {
-        splitState.selectedPages.push({
-          uid: nextPageUid(),
-          pageIndex: i,
-          selected: true,
-        });
+        splitState.selectedPages.push({ uid: nextPageUid(), pageIndex: i, selected: true });
       }
 
       Utils.$('splitOptions-pdf-split').classList.remove('hidden');
@@ -498,7 +536,7 @@ const PdfToolsConverter = (() => {
       if (splitOptions) splitOptions.show();
       Utils.$('actionsPanel-pdf-split').classList.remove('hidden');
 
-      renderSplitPageGrid();
+      renderSplitThumbnailGrid();
       debouncedSplitPreview();
     } catch (err) {
       Toast.show('PDFの読み込みに失敗しました', 'error');
@@ -508,98 +546,99 @@ const PdfToolsConverter = (() => {
     }
   }
 
-  function renderSplitPageGrid() {
-    const gridEl = Utils.$('splitPageGridContainer-pdf-split');
-    gridEl.innerHTML = '';
+  // ── 分割サムネイルグリッド ──
+  let _splitThumbGen = 0;
+  let _draggedSplitThumbUid = null;
 
-    splitState.selectedPages.forEach((page, idx) => {
+  function renderSplitThumbnailGrid() {
+    const container = Utils.$('splitPageGridContainer-pdf-split');
+    container.innerHTML = '';
+
+    splitState.selectedPages.forEach((page) => {
+      const cached = hasPdfJs ? PageThumbnail.getCached('split', page.pageIndex) : null;
+
       const card = document.createElement('div');
-      card.className = 'page-card' + (page.selected ? ' selected' : '');
+      card.className = 'page-thumb-card' + (page.selected ? ' selected' : '');
       card.dataset.pageUid = page.uid;
       card.draggable = true;
       card.innerHTML = `
-        <input type="checkbox" class="page-card-checkbox" ${page.selected ? 'checked' : ''} data-page-uid="${page.uid}">
-        <span class="page-card-number">${page.pageIndex + 1}</span>
-        <span class="page-card-label">P${page.pageIndex + 1}</span>
-        <div class="page-card-actions">
-          <button class="sheet-btn page-move-up-btn" title="上に移動" ${idx === 0 ? 'disabled' : ''} data-page-uid="${page.uid}">
-            ${UP_SVG}
-          </button>
-          <button class="sheet-btn page-move-down-btn" title="下に移動" ${idx === splitState.selectedPages.length - 1 ? 'disabled' : ''} data-page-uid="${page.uid}">
-            ${DOWN_SVG}
-          </button>
+        <input type="checkbox" class="page-thumb-checkbox" ${page.selected ? 'checked' : ''} data-page-uid="${page.uid}">
+        <div class="page-thumb-img-wrap">
+          <span class="page-thumb-placeholder${hasPdfJs ? ' page-thumb-loading' : ''}" ${cached ? 'style="display:none"' : ''}>${page.pageIndex + 1}</span>
+          <img class="page-thumb-img" ${cached ? `src="${cached}"` : 'style="display:none"'} alt="P${page.pageIndex + 1}">
+        </div>
+        <div class="page-thumb-info">
+          <span class="page-thumb-page-num">P${page.pageIndex + 1}</span>
         </div>
       `;
-      gridEl.appendChild(card);
+      container.appendChild(card);
     });
 
-    bindSplitPageEvents(gridEl);
+    bindSplitThumbnailEvents();
+    if (hasPdfJs) renderSplitThumbnailsAsync();
   }
 
-  let draggedSplitPageUid = null;
+  async function renderSplitThumbnailsAsync() {
+    const gen = ++_splitThumbGen;
 
-  function bindSplitPageEvents(gridEl) {
-    gridEl.querySelectorAll('.page-card-checkbox').forEach((cb) => {
+    for (const page of splitState.selectedPages) {
+      if (gen !== _splitThumbGen) return;
+      if (PageThumbnail.getCached('split', page.pageIndex)) continue;
+
+      try {
+        const dataUrl = await PageThumbnail.render('split', splitState.data, page.pageIndex);
+        if (gen !== _splitThumbGen) return;
+
+        const card = document.querySelector(`#splitPageGridContainer-pdf-split [data-page-uid="${page.uid}"]`);
+        if (card) {
+          const img = card.querySelector('.page-thumb-img');
+          const ph = card.querySelector('.page-thumb-placeholder');
+          if (img) { img.src = dataUrl; img.style.display = 'block'; }
+          if (ph) ph.style.display = 'none';
+        }
+      } catch (err) {
+        console.warn('Split thumbnail render failed:', page.pageIndex, err);
+      }
+
+      await new Promise((r) => setTimeout(r, 10));
+    }
+  }
+
+  function bindSplitThumbnailEvents() {
+    const container = Utils.$('splitPageGridContainer-pdf-split');
+
+    // チェックボックス
+    container.querySelectorAll('.page-thumb-checkbox').forEach((cb) => {
       cb.addEventListener('change', (e) => {
         e.stopPropagation();
         const uid = parseInt(cb.dataset.pageUid, 10);
         const page = splitState.selectedPages.find((p) => p.uid === uid);
         if (page) {
           page.selected = cb.checked;
-          cb.closest('.page-card').classList.toggle('selected', cb.checked);
+          cb.closest('.page-thumb-card').classList.toggle('selected', cb.checked);
           syncPageRangeText();
           debouncedSplitPreview();
         }
       });
     });
 
-    gridEl.querySelectorAll('.page-move-up-btn').forEach((btn) => {
-      btn.addEventListener('click', (e) => {
-        e.stopPropagation();
-        const uid = parseInt(btn.dataset.pageUid, 10);
-        const idx = splitState.selectedPages.findIndex((p) => p.uid === uid);
-        if (idx > 0) {
-          [splitState.selectedPages[idx - 1], splitState.selectedPages[idx]] =
-            [splitState.selectedPages[idx], splitState.selectedPages[idx - 1]];
-          renderSplitPageGrid();
-          syncPageRangeText();
-          debouncedSplitPreview();
-        }
-      });
-    });
-
-    gridEl.querySelectorAll('.page-move-down-btn').forEach((btn) => {
-      btn.addEventListener('click', (e) => {
-        e.stopPropagation();
-        const uid = parseInt(btn.dataset.pageUid, 10);
-        const idx = splitState.selectedPages.findIndex((p) => p.uid === uid);
-        if (idx < splitState.selectedPages.length - 1) {
-          [splitState.selectedPages[idx], splitState.selectedPages[idx + 1]] =
-            [splitState.selectedPages[idx + 1], splitState.selectedPages[idx]];
-          renderSplitPageGrid();
-          syncPageRangeText();
-          debouncedSplitPreview();
-        }
-      });
-    });
-
-    // Page-level drag & drop
-    gridEl.querySelectorAll('.page-card').forEach((card) => {
+    // ドラッグ&ドロップ
+    container.querySelectorAll('.page-thumb-card').forEach((card) => {
       card.addEventListener('dragstart', (e) => {
-        draggedSplitPageUid = parseInt(card.dataset.pageUid, 10);
+        _draggedSplitThumbUid = parseInt(card.dataset.pageUid, 10);
         card.classList.add('dragging');
         e.dataTransfer.effectAllowed = 'move';
-        e.dataTransfer.setData('text/plain', 'split-page-' + card.dataset.pageUid);
+        e.dataTransfer.setData('text/plain', 'spage-' + card.dataset.pageUid);
       });
       card.addEventListener('dragend', () => {
         card.classList.remove('dragging');
-        draggedSplitPageUid = null;
-        gridEl.querySelectorAll('.page-card').forEach((c) => c.classList.remove('drag-over-card'));
+        _draggedSplitThumbUid = null;
+        container.querySelectorAll('.page-thumb-card').forEach((c) => c.classList.remove('drag-over-card'));
       });
       card.addEventListener('dragover', (e) => {
         e.preventDefault();
         e.dataTransfer.dropEffect = 'move';
-        if (draggedSplitPageUid !== null && draggedSplitPageUid !== parseInt(card.dataset.pageUid, 10)) {
+        if (_draggedSplitThumbUid !== null && _draggedSplitThumbUid !== parseInt(card.dataset.pageUid, 10)) {
           card.classList.add('drag-over-card');
         }
       });
@@ -608,28 +647,25 @@ const PdfToolsConverter = (() => {
         e.preventDefault();
         card.classList.remove('drag-over-card');
         const targetUid = parseInt(card.dataset.pageUid, 10);
-        if (draggedSplitPageUid === null || draggedSplitPageUid === targetUid) return;
-        const fromIdx = splitState.selectedPages.findIndex((p) => p.uid === draggedSplitPageUid);
+        if (_draggedSplitThumbUid === null || _draggedSplitThumbUid === targetUid) return;
+        const fromIdx = splitState.selectedPages.findIndex((p) => p.uid === _draggedSplitThumbUid);
         const toIdx = splitState.selectedPages.findIndex((p) => p.uid === targetUid);
         if (fromIdx === -1 || toIdx === -1) return;
         const [moved] = splitState.selectedPages.splice(fromIdx, 1);
         splitState.selectedPages.splice(toIdx, 0, moved);
-        renderSplitPageGrid();
+        renderSplitThumbnailGrid();
         syncPageRangeText();
         debouncedSplitPreview();
       });
     });
   }
 
-  // ── グリッド → テキスト 同期 ──
+  // ── グリッド → テキスト同期 ──
   function syncPageRangeText() {
     if (_splitSyncing) return;
     _splitSyncing = true;
     try {
-      const selected = splitState.selectedPages
-        .filter((p) => p.selected)
-        .map((p) => p.pageIndex + 1); // 1-based
-
+      const selected = splitState.selectedPages.filter((p) => p.selected).map((p) => p.pageIndex + 1);
       Utils.$('pageRange-pdf-split').value = compactPageRange(selected);
     } finally {
       _splitSyncing = false;
@@ -639,66 +675,40 @@ const PdfToolsConverter = (() => {
   function compactPageRange(pages) {
     if (pages.length === 0) return '';
     const parts = [];
-    let rangeStart = pages[0];
-    let rangeEnd = pages[0];
-    let prev = pages[0];
-
+    let start = pages[0], end = pages[0], prev = pages[0];
     for (let i = 1; i < pages.length; i++) {
-      if (pages[i] === prev + 1) {
-        rangeEnd = pages[i];
-      } else {
-        parts.push(rangeStart === rangeEnd ? `${rangeStart}` : `${rangeStart}-${rangeEnd}`);
-        rangeStart = pages[i];
-        rangeEnd = pages[i];
-      }
+      if (pages[i] === prev + 1) { end = pages[i]; }
+      else { parts.push(start === end ? `${start}` : `${start}-${end}`); start = pages[i]; end = pages[i]; }
       prev = pages[i];
     }
-    parts.push(rangeStart === rangeEnd ? `${rangeStart}` : `${rangeStart}-${rangeEnd}`);
+    parts.push(start === end ? `${start}` : `${start}-${end}`);
     return parts.join(', ');
   }
 
-  // ── テキスト → グリッド 同期 ──
+  // ── テキスト → グリッド同期 ──
   function syncFromPageRangeText() {
     if (_splitSyncing) return;
     _splitSyncing = true;
     try {
       const rangeStr = Utils.$('pageRange-pdf-split').value;
       const pageNumbers = parsePageRangeOrdered(rangeStr, splitState.pageCount);
-
-      // Update selected state based on text
       const selectedSet = new Set(pageNumbers);
-      splitState.selectedPages.forEach((p) => {
-        p.selected = selectedSet.has(p.pageIndex + 1);
-      });
 
-      // Reorder: move selected pages to match text order, keep unselected at end in original order
+      splitState.selectedPages.forEach((p) => { p.selected = selectedSet.has(p.pageIndex + 1); });
+
       const selectedMap = new Map();
-      splitState.selectedPages.forEach((p) => {
-        if (!selectedMap.has(p.pageIndex)) {
-          selectedMap.set(p.pageIndex, p);
-        }
-      });
+      splitState.selectedPages.forEach((p) => { if (!selectedMap.has(p.pageIndex)) selectedMap.set(p.pageIndex, p); });
 
       const reordered = [];
       const used = new Set();
-      for (const pageNum of pageNumbers) {
-        const pi = pageNum - 1;
-        const page = selectedMap.get(pi);
-        if (page && !used.has(page.uid)) {
-          reordered.push(page);
-          used.add(page.uid);
-        }
+      for (const num of pageNumbers) {
+        const page = selectedMap.get(num - 1);
+        if (page && !used.has(page.uid)) { reordered.push(page); used.add(page.uid); }
       }
-      // Add unselected pages at end
-      splitState.selectedPages.forEach((p) => {
-        if (!used.has(p.uid)) {
-          reordered.push(p);
-          used.add(p.uid);
-        }
-      });
+      splitState.selectedPages.forEach((p) => { if (!used.has(p.uid)) { reordered.push(p); used.add(p.uid); } });
 
       splitState.selectedPages = reordered;
-      renderSplitPageGrid();
+      renderSplitThumbnailGrid();
     } finally {
       _splitSyncing = false;
     }
@@ -707,28 +717,23 @@ const PdfToolsConverter = (() => {
   function parsePageRangeOrdered(rangeStr, maxPages) {
     const pages = [];
     const seen = new Set();
-    const parts = rangeStr.split(',');
-    for (let part of parts) {
+    for (let part of rangeStr.split(',')) {
       part = part.trim();
       if (!part) continue;
       const match = part.match(/^(\d+)\s*-\s*(\d+)$/);
       if (match) {
-        const start = Math.max(1, parseInt(match[1], 10));
-        const end = Math.min(maxPages, parseInt(match[2], 10));
-        for (let i = start; i <= end; i++) {
-          if (!seen.has(i)) { pages.push(i); seen.add(i); }
-        }
+        const s = Math.max(1, parseInt(match[1], 10));
+        const e = Math.min(maxPages, parseInt(match[2], 10));
+        for (let i = s; i <= e; i++) { if (!seen.has(i)) { pages.push(i); seen.add(i); } }
       } else {
         const num = parseInt(part, 10);
-        if (!isNaN(num) && num >= 1 && num <= maxPages && !seen.has(num)) {
-          pages.push(num);
-          seen.add(num);
-        }
+        if (!isNaN(num) && num >= 1 && num <= maxPages && !seen.has(num)) { pages.push(num); seen.add(num); }
       }
     }
     return pages;
   }
 
+  // ── 分割ロジック ──
   async function extractPages() {
     if (!splitState.data) return null;
     const selected = splitState.selectedPages.filter((p) => p.selected);
@@ -740,10 +745,7 @@ const PdfToolsConverter = (() => {
     const copiedPages = await newDoc.copyPages(src, indices);
     copiedPages.forEach((page) => newDoc.addPage(page));
 
-    if (splitOptions) {
-      _applyMetadata(newDoc, splitOptions.getOptions());
-    }
-
+    if (splitOptions) _applyMetadata(newDoc, splitOptions.getOptions());
     return { doc: newDoc, pageNumbers: selected.map((p) => p.pageIndex + 1) };
   }
 
@@ -754,10 +756,7 @@ const PdfToolsConverter = (() => {
 
     try {
       const result = await extractPages();
-      if (!result) {
-        previewInfo.textContent = '有効なページ範囲を指定してください';
-        return;
-      }
+      if (!result) { previewInfo.textContent = '有効なページ範囲を指定してください'; return; }
       const bytes = await result.doc.save();
       const blob = new Blob([bytes], { type: 'application/pdf' });
       splitState.previewUrl = Utils.revokeBlobUrl(splitState.previewUrl);
@@ -777,7 +776,6 @@ const PdfToolsConverter = (() => {
     try {
       const result = await extractPages();
       if (!result) { Toast.show('有効なページ範囲を指定してください', 'error'); Loading.hide(); return; }
-
       const bytes = await result.doc.save();
       const blob = new Blob([bytes], { type: 'application/pdf' });
       const url = URL.createObjectURL(blob);
@@ -822,16 +820,6 @@ const PdfToolsConverter = (() => {
     Utils.$('clearAllPdfs-pdf-merge').addEventListener('click', resetMerge);
     Utils.$('convertBtn-pdf-merge').addEventListener('click', downloadMerged);
 
-    // 全ページ展開 / すべて閉じる
-    Utils.$('expandAllPages-pdf-merge').addEventListener('click', () => {
-      mergeState.pdfs.forEach((pdf) => { pdf.expanded = true; });
-      renderMergeList();
-    });
-    Utils.$('collapseAllPages-pdf-merge').addEventListener('click', () => {
-      mergeState.pdfs.forEach((pdf) => { pdf.expanded = false; });
-      renderMergeList();
-    });
-
     // PDF 分割
     DropZone.init({
       elementId: 'dropZone-pdf-split',
@@ -850,24 +838,21 @@ const PdfToolsConverter = (() => {
       });
     }
 
-    // テキスト入力変更 → グリッド同期
     Utils.$('pageRange-pdf-split').addEventListener('input', () => {
       syncFromPageRangeText();
       debouncedSplitPreview();
     });
-
     Utils.$('convertBtn-pdf-split').addEventListener('click', downloadSplit);
 
-    // 全選択 / 全解除
     Utils.$('selectAllPages-pdf-split').addEventListener('click', () => {
       splitState.selectedPages.forEach((p) => { p.selected = true; });
-      renderSplitPageGrid();
+      renderSplitThumbnailGrid();
       syncPageRangeText();
       debouncedSplitPreview();
     });
     Utils.$('deselectAllPages-pdf-split').addEventListener('click', () => {
       splitState.selectedPages.forEach((p) => { p.selected = false; });
-      renderSplitPageGrid();
+      renderSplitThumbnailGrid();
       syncPageRangeText();
       debouncedSplitPreview();
     });

@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>ファイル変換ツール</title>
   <meta name="description" content="Excel→PDF、画像→PDF、CSV⇔Excel、PDF結合・分割。ブラウザ上で完結、サーバーへのアップロード不要。">
-  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' https://cdnjs.cloudflare.com https://unpkg.com; style-src 'self' https://fonts.googleapis.com 'unsafe-inline'; font-src https://fonts.gstatic.com; img-src 'self' blob: data:; frame-src blob:; connect-src https://cdn.jsdelivr.net;">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' https://cdnjs.cloudflare.com https://unpkg.com; style-src 'self' https://fonts.googleapis.com 'unsafe-inline'; font-src https://fonts.gstatic.com; img-src 'self' blob: data:; frame-src blob:; connect-src https://cdn.jsdelivr.net; worker-src https://unpkg.com blob:;">
   <meta http-equiv="X-Content-Type-Options" content="nosniff">
   <meta name="referrer" content="no-referrer">
   <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -495,12 +495,19 @@
             <div class="sheet-list-header">
               <h2>PDFファイル一覧</h2>
               <div class="sheet-list-actions">
-                <button id="expandAllPages-pdf-merge" class="sheet-action-btn">全ページ展開</button>
-                <button id="collapseAllPages-pdf-merge" class="sheet-action-btn">すべて閉じる</button>
                 <button id="clearAllPdfs-pdf-merge" class="sheet-action-btn danger-btn">すべて削除</button>
               </div>
             </div>
             <div id="pdfListContainer-pdf-merge" class="sheet-list-container"></div>
+          </section>
+
+          <!-- ページサムネイル一覧 -->
+          <section id="pageThumbnails-pdf-merge" class="sheet-list hidden">
+            <div class="sheet-list-header">
+              <h2>ページ一覧</h2>
+              <span id="pageThumbnailInfo-pdf-merge" class="preview-info"></span>
+            </div>
+            <div id="pageThumbnailGrid-pdf-merge" class="page-thumb-grid"></div>
           </section>
 
           <!-- Preview -->
@@ -563,7 +570,7 @@
                   <button id="deselectAllPages-pdf-split" class="sheet-action-btn">全解除</button>
                 </div>
               </div>
-              <div id="splitPageGridContainer-pdf-split" class="page-grid"></div>
+              <div id="splitPageGridContainer-pdf-split" class="page-thumb-grid"></div>
             </div>
             <!-- テキスト入力 -->
             <div class="option-group" style="max-width: 400px; margin-top: 16px;">
@@ -626,6 +633,8 @@
           crossorigin="anonymous" referrerpolicy="no-referrer"></script>
   <script src="https://unpkg.com/pdf-lib@1.17.1/dist/pdf-lib.min.js"
           integrity="sha512-z8IYLHO8bTgFqj+yrPyIJnzBDf7DDhWwiEsk4sY+Oe6J2M+WQequeGS7qioI5vT6rXgVRb4K1UVQC5ER7MKzKQ=="
+          crossorigin="anonymous" referrerpolicy="no-referrer"></script>
+  <script src="https://unpkg.com/pdfjs-dist@3.11.174/build/pdf.min.js"
           crossorigin="anonymous" referrerpolicy="no-referrer"></script>
 
   <!-- App -->
