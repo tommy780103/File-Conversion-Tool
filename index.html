@@ -494,7 +494,11 @@
           <section id="pdfList-pdf-merge" class="sheet-list hidden">
             <div class="sheet-list-header">
               <h2>PDFファイル一覧</h2>
-              <button id="clearAllPdfs-pdf-merge" class="sheet-action-btn danger-btn">すべて削除</button>
+              <div class="sheet-list-actions">
+                <button id="expandAllPages-pdf-merge" class="sheet-action-btn">全ページ展開</button>
+                <button id="collapseAllPages-pdf-merge" class="sheet-action-btn">すべて閉じる</button>
+                <button id="clearAllPdfs-pdf-merge" class="sheet-action-btn danger-btn">すべて削除</button>
+              </div>
             </div>
             <div id="pdfListContainer-pdf-merge" class="sheet-list-container"></div>
           </section>
@@ -550,10 +554,22 @@
               <h2>ページ抽出設定</h2>
               <span id="splitPageInfo-pdf-split" class="preview-info"></span>
             </div>
-            <div class="option-group" style="max-width: 400px;">
-              <label for="pageRange-pdf-split">ページ範囲</label>
+            <!-- ページグリッド -->
+            <div id="splitPageGrid-pdf-split" class="page-grid-wrapper">
+              <div class="page-grid-header">
+                <span class="page-grid-header-label">ページを選択・並べ替え</span>
+                <div class="page-grid-actions">
+                  <button id="selectAllPages-pdf-split" class="sheet-action-btn">全選択</button>
+                  <button id="deselectAllPages-pdf-split" class="sheet-action-btn">全解除</button>
+                </div>
+              </div>
+              <div id="splitPageGridContainer-pdf-split" class="page-grid"></div>
+            </div>
+            <!-- テキスト入力 -->
+            <div class="option-group" style="max-width: 400px; margin-top: 16px;">
+              <label for="pageRange-pdf-split">ページ範囲（テキスト入力）</label>
               <input type="text" id="pageRange-pdf-split" class="text-input" placeholder="例: 1-3, 5, 7-10">
-              <p class="option-hint">カンマ区切りでページ番号や範囲を指定してください</p>
+              <p class="option-hint">カンマ区切りでページ番号や範囲を指定（グリッドと連動）</p>
             </div>
           </section>
 

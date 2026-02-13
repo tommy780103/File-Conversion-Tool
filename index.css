@@ -1324,6 +1324,145 @@ body {
 }
 
 /* ==========================================
+   Page Grid (PDF結合・分割 ページレベル並べ替え)
+   ========================================== */
+.page-expand-area {
+  display: none;
+  padding: 8px 16px 12px;
+  border-top: 1px solid var(--border-color);
+  background: rgba(99, 102, 241, 0.03);
+}
+
+.page-expand-area.open {
+  display: block;
+  animation: fadeIn 0.2s ease-out;
+}
+
+.page-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(100px, 1fr));
+  gap: 8px;
+}
+
+.page-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  padding: 10px 6px 8px;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-sm);
+  cursor: grab;
+  transition: all var(--transition-fast);
+  position: relative;
+  user-select: none;
+}
+
+.page-card:hover {
+  border-color: var(--border-active);
+  background: var(--bg-card-hover);
+}
+
+.page-card.dragging {
+  opacity: 0.5;
+  border-color: var(--accent-primary);
+  box-shadow: var(--shadow-glow);
+}
+
+.page-card.drag-over-card {
+  border-color: var(--accent-primary);
+  box-shadow: 0 0 0 2px rgba(99, 102, 241, 0.2);
+}
+
+.page-card.selected {
+  border-color: var(--accent-primary);
+  background: rgba(99, 102, 241, 0.08);
+}
+
+.page-card-number {
+  font-size: 1.1rem;
+  font-weight: 700;
+  color: var(--accent-primary);
+  line-height: 1;
+}
+
+.page-card-label {
+  font-size: 0.65rem;
+  color: var(--text-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 100%;
+  text-align: center;
+}
+
+.page-card-actions {
+  display: flex;
+  gap: 2px;
+  margin-top: 2px;
+}
+
+.page-card-actions .sheet-btn {
+  width: 22px;
+  height: 22px;
+}
+
+.page-card-actions .sheet-btn svg {
+  width: 12px;
+  height: 12px;
+}
+
+.page-card-checkbox {
+  position: absolute;
+  top: 4px;
+  left: 4px;
+  appearance: none;
+  width: 16px;
+  height: 16px;
+  border: 2px solid var(--border-color);
+  border-radius: 3px;
+  background: var(--bg-secondary);
+  cursor: pointer;
+  transition: all var(--transition-fast);
+}
+
+.page-card-checkbox:checked {
+  background: var(--accent-primary);
+  border-color: var(--accent-primary);
+}
+
+.page-card-checkbox:checked::after {
+  content: '';
+  position: absolute;
+  top: 1px;
+  left: 4px;
+  width: 4px;
+  height: 7px;
+  border: solid white;
+  border-width: 0 2px 2px 0;
+  transform: rotate(45deg);
+}
+
+.page-grid-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 8px;
+}
+
+.page-grid-header-label {
+  font-size: 0.75rem;
+  font-weight: 500;
+  color: var(--text-muted);
+}
+
+.page-grid-actions {
+  display: flex;
+  gap: 6px;
+}
+
+/* ==========================================
    Utility Classes
    ========================================== */
 .hidden {
@@ -1431,6 +1570,15 @@ body {
 
   .image-grid {
     grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+  }
+
+  .page-grid {
+    grid-template-columns: repeat(auto-fill, minmax(80px, 1fr));
+    gap: 6px;
+  }
+
+  .page-card-number {
+    font-size: 0.95rem;
   }
 }
 
