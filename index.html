@@ -171,6 +171,15 @@
           </div>
         </section>
 
+        <!-- ページサムネイル一覧 -->
+        <section id="pageThumbnails-excel-pdf" class="sheet-list hidden">
+          <div class="sheet-list-header">
+            <h2>ページ一覧</h2>
+            <span id="pageThumbnailInfo-excel-pdf" class="preview-info"></span>
+          </div>
+          <div id="pageThumbnailGrid-excel-pdf" class="page-thumb-grid"></div>
+        </section>
+
         <!-- Preview -->
         <section id="previewSection-excel-pdf" class="preview-section hidden">
           <div class="preview-header">
@@ -269,6 +278,15 @@
               </div>
             </div>
           </div>
+        </section>
+
+        <!-- PDFページサムネイル一覧 -->
+        <section id="pageThumbnails-image-pdf" class="sheet-list hidden">
+          <div class="sheet-list-header">
+            <h2>PDFページ一覧</h2>
+            <span id="pageThumbnailInfo-image-pdf" class="preview-info"></span>
+          </div>
+          <div id="pageThumbnailGrid-image-pdf" class="page-thumb-grid"></div>
         </section>
 
         <!-- Preview -->
@@ -605,6 +623,30 @@
       </div>
 
     </div><!-- end tab-panels -->
+
+    <!-- ページプレビューモーダル -->
+    <div id="pagePreviewModal" class="page-preview-modal hidden">
+      <div class="page-preview-backdrop"></div>
+      <div class="page-preview-content">
+        <div class="page-preview-header">
+          <span id="pagePreviewTitle"></span>
+          <button id="pagePreviewClose" class="page-preview-close">&times;</button>
+        </div>
+        <div class="page-preview-body">
+          <button id="pagePreviewPrev" class="page-preview-nav page-preview-prev">&larr;</button>
+          <div class="page-preview-image-wrap">
+            <img id="pagePreviewImage" alt="ページプレビュー">
+            <div id="pagePreviewLoading" class="page-preview-loading">
+              <div class="loading-spinner" style="width:36px;height:36px;margin:0;"></div>
+            </div>
+          </div>
+          <button id="pagePreviewNext" class="page-preview-nav page-preview-next">&rarr;</button>
+        </div>
+        <div class="page-preview-footer">
+          <span id="pagePreviewPageInfo"></span>
+        </div>
+      </div>
+    </div>
 
     <!-- 共通 Loading Overlay -->
     <div id="loadingOverlay" class="loading-overlay hidden">

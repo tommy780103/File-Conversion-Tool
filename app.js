@@ -383,6 +383,185 @@ const TabManager = {
 };
 
 // ==========================================
+// サムネイルレンダラー (pdf.js) — 全タブ共通
+// ==========================================
+const PageThumbnail = {
+  _cache: new Map(),     // "cacheKey_pageIdx" -> dataURL
+  _docCache: new Map(),  // cacheKey -> Promise<PDFDocumentProxy>
+
+  _getDoc(cacheKey, data) {
+    if (!this._docCache.has(cacheKey)) {
+      this._docCache.set(cacheKey,
+        pdfjsLib.getDocument({ data: data.slice(0) }).promise
+      );
+    }
+    return this._docCache.get(cacheKey);
+  },
+
+  async render(cacheKey, pdfData, pageIndex, width) {
+    width = width || 180;
+    const key = `${cacheKey}_${pageIndex}`;
+    if (this._cache.has(key)) return this._cache.get(key);
+
+    const doc = await this._getDoc(cacheKey, pdfData);
+    const page = await doc.getPage(pageIndex + 1);
+    const vp = page.getViewport({ scale: 1 });
+    const scale = width / vp.width;
+    const svp = page.getViewport({ scale });
+
+    const canvas = document.createElement('canvas');
+    canvas.width = Math.floor(svp.width);
+    canvas.height = Math.floor(svp.height);
+    await page.render({
+      canvasContext: canvas.getContext('2d'),
+      viewport: svp,
+    }).promise;
+
+    const dataUrl = canvas.toDataURL('image/jpeg', 0.75);
+    this._cache.set(key, dataUrl);
+    return dataUrl;
+  },
+
+  async renderLarge(cacheKey, pdfData, pageIndex) {
+    const width = 800;
+    const key = `${cacheKey}_large_${pageIndex}`;
+    if (this._cache.has(key)) return this._cache.get(key);
+
+    const doc = await this._getDoc(cacheKey, pdfData);
+    const page = await doc.getPage(pageIndex + 1);
+    const vp = page.getViewport({ scale: 1 });
+    const scale = width / vp.width;
+    const svp = page.getViewport({ scale });
+
+    const canvas = document.createElement('canvas');
+    canvas.width = Math.floor(svp.width);
+    canvas.height = Math.floor(svp.height);
+    await page.render({
+      canvasContext: canvas.getContext('2d'),
+      viewport: svp,
+    }).promise;
+
+    const dataUrl = canvas.toDataURL('image/jpeg', 0.92);
+    this._cache.set(key, dataUrl);
+    return dataUrl;
+  },
+
+  getCached(cacheKey, pageIndex) {
+    return this._cache.get(`${cacheKey}_${pageIndex}`) || null;
+  },
+
+  clearForKey(prefix) {
+    for (const k of [...this._cache.keys()]) {
+      if (k.startsWith(`${prefix}_`)) this._cache.delete(k);
+    }
+    this._docCache.delete(prefix);
+  },
+
+  clearAll() {
+    this._cache.clear();
+    this._docCache.clear();
+  },
+};
+
+// ==========================================
+// ページプレビューモーダル — 全タブ共通
+// ==========================================
+const PagePreviewModal = {
+  _modal: null,
+  _config: null,
+  _currentIndex: 0,
+
+  _getEls() {
+    if (this._modal) return;
+    this._modal = Utils.$('pagePreviewModal');
+    this._backdrop = this._modal.querySelector('.page-preview-backdrop');
+    this._title = Utils.$('pagePreviewTitle');
+    this._closeBtn = Utils.$('pagePreviewClose');
+    this._prevBtn = Utils.$('pagePreviewPrev');
+    this._nextBtn = Utils.$('pagePreviewNext');
+    this._image = Utils.$('pagePreviewImage');
+    this._loading = Utils.$('pagePreviewLoading');
+    this._pageInfo = Utils.$('pagePreviewPageInfo');
+
+    this._closeBtn.addEventListener('click', () => this.close());
+    this._backdrop.addEventListener('click', () => this.close());
+    this._prevBtn.addEventListener('click', () => this._navigate(-1));
+    this._nextBtn.addEventListener('click', () => this._navigate(1));
+
+    this._onKeyDown = (e) => {
+      if (!this._config) return;
+      if (e.key === 'Escape') this.close();
+      else if (e.key === 'ArrowLeft') this._navigate(-1);
+      else if (e.key === 'ArrowRight') this._navigate(1);
+    };
+  },
+
+  open(config) {
+    this._getEls();
+    this._config = config;
+    this._currentIndex = config.currentIndex || 0;
+    this._modal.classList.remove('hidden');
+    document.addEventListener('keydown', this._onKeyDown);
+    document.body.style.overflow = 'hidden';
+    this._showPage(this._currentIndex);
+  },
+
+  close() {
+    if (!this._modal) return;
+    this._modal.classList.add('hidden');
+    this._config = null;
+    this._image.src = '';
+    document.removeEventListener('keydown', this._onKeyDown);
+    document.body.style.overflow = '';
+  },
+
+  _navigate(delta) {
+    if (!this._config) return;
+    const newIdx = this._currentIndex + delta;
+    if (newIdx < 0 || newIdx >= this._config.pages.length) return;
+    this._currentIndex = newIdx;
+    this._showPage(newIdx);
+  },
+
+  async _showPage(idx) {
+    const cfg = this._config;
+    if (!cfg || idx < 0 || idx >= cfg.pages.length) return;
+
+    const page = cfg.pages[idx];
+    const total = cfg.pages.length;
+
+    // タイトル更新
+    this._title.textContent = cfg.getTitle ? cfg.getTitle(page, idx) : `ページ ${idx + 1}`;
+    this._pageInfo.textContent = `${idx + 1} / ${total}`;
+
+    // ボタン状態
+    this._prevBtn.disabled = idx === 0;
+    this._nextBtn.disabled = idx === total - 1;
+
+    // ローディング表示
+    this._loading.style.display = 'flex';
+    this._image.style.display = 'none';
+
+    try {
+      const cacheKey = cfg.getCacheKey ? cfg.getCacheKey(page) : cfg.cacheKey;
+      const pdfData = cfg.getPdfData ? cfg.getPdfData(page) : cfg.pdfData;
+      const pageIndex = typeof page.pageIndex === 'number' ? page.pageIndex : idx;
+
+      const dataUrl = await PageThumbnail.renderLarge(cacheKey, pdfData, pageIndex);
+      // 表示するページがまだ同じかチェック
+      if (this._currentIndex !== idx || !this._config) return;
+
+      this._image.src = dataUrl;
+      this._image.style.display = 'block';
+      this._loading.style.display = 'none';
+    } catch (err) {
+      console.warn('PagePreviewModal: render failed', err);
+      this._loading.textContent = 'レンダリングに失敗しました';
+    }
+  },
+};
+
+// ==========================================
 // App Init
 // ==========================================
 document.addEventListener('DOMContentLoaded', () => {

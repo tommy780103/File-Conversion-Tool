@@ -11,7 +11,12 @@ const ExcelPdfConverter = (() => {
     fileIdCounter: 0,
     sheetIdCounter: 0,
     pdfBlobUrl: null,
+    pdfBytes: null,       // Uint8Array — 生成済みPDF
+    pageEntries: [],      // { uid, pageIndex, label }
+    pageUidCounter: 0,
   };
+
+  const hasPdfJs = typeof pdfjsLib !== 'undefined';
 
   let pdfOptions = null; // PdfOutputOptions インスタンス
   let previewTimer = null;
@@ -88,6 +93,9 @@ const ExcelPdfConverter = (() => {
     state.sheets = [];
     state.fileIdCounter = 0;
     state.sheetIdCounter = 0;
+    state.pdfBytes = null;
+    state.pageEntries = [];
+    state.pageUidCounter = 0;
     revokePdfUrl();
 
     S('dropZone').classList.remove('compact');
@@ -97,6 +105,7 @@ const ExcelPdfConverter = (() => {
     if (pdfOptions) pdfOptions.hide();
     S('previewSection').classList.add('hidden');
     S('actionsPanel').classList.add('hidden');
+    hidePageThumbnails();
 
     S('fileChipsContainer').innerHTML = '';
     S('sheetListContainer').innerHTML = '';
@@ -527,6 +536,7 @@ const ExcelPdfConverter = (() => {
       previewInfo.textContent = 'シートが選択されていません';
       revokePdfUrl();
       pdfPreview.src = '';
+      hidePageThumbnails();
       return;
     }
     previewInfo.textContent = JapaneseFont.isLoaded() ? '生成中...' : 'フォント読み込み中...';
@@ -535,12 +545,26 @@ const ExcelPdfConverter = (() => {
       try {
         const doc = await generatePDF(true);
         if (!doc) { previewInfo.textContent = 'シートが選択されていません'; return; }
-        const blob = doc.output('blob');
+        const ab = doc.output('arraybuffer');
+        state.pdfBytes = new Uint8Array(ab);
+
+        const blob = new Blob([state.pdfBytes], { type: 'application/pdf' });
         revokePdfUrl();
         state.pdfBlobUrl = URL.createObjectURL(blob);
         pdfPreview.src = state.pdfBlobUrl;
         const pageCount = doc.internal.getNumberOfPages();
         previewInfo.textContent = `${selectedCount} シート・${pageCount} ページ`;
+
+        // ページエントリ初期化
+        state.pageEntries = [];
+        state.pageUidCounter = 0;
+        for (let i = 0; i < pageCount; i++) {
+          state.pageEntries.push({ uid: ++state.pageUidCounter, pageIndex: i, label: `P${i + 1}` });
+        }
+        if (hasPdfJs) {
+          PageThumbnail.clearForKey('excel-pdf');
+          renderPageThumbnailGrid();
+        }
       } catch (err) {
         previewInfo.textContent = 'プレビュー生成に失敗しました';
         console.error(err);
@@ -553,12 +577,28 @@ const ExcelPdfConverter = (() => {
     if (Object.keys(state.files).length === 0) return;
     try {
       Loading.show('PDF変換中...');
-      const doc = await generatePDF(false);
-      if (!doc) { Toast.show('シートが選択されていません', 'error'); return; }
       const fileIds = Object.keys(state.files);
       const baseNames = fileIds.map((fid) => Utils.getBaseName(state.files[fid].name));
       const pdfFileName = Utils.buildDownloadName(baseNames, 'pdf');
-      doc.save(pdfFileName);
+
+      // ページ管理済みの場合は pdf-lib で再構築
+      if (state.pdfBytes && state.pageEntries.length > 0) {
+        const finalBytes = await rebuildPdfFromPages();
+        if (!finalBytes) { Toast.show('シートが選択されていません', 'error'); Loading.hide(); return; }
+        const blob = new Blob([finalBytes], { type: 'application/pdf' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = pdfFileName;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+      } else {
+        const doc = await generatePDF(false);
+        if (!doc) { Toast.show('シートが選択されていません', 'error'); Loading.hide(); return; }
+        doc.save(pdfFileName);
+      }
       Toast.show('PDFのダウンロードが完了しました！', 'success');
     } catch (err) {
       Toast.show('PDF変換中にエラーが発生しました', 'error');
@@ -567,6 +607,174 @@ const ExcelPdfConverter = (() => {
       Loading.hide();
     }
   }
+
+  // ── ページサムネイル管理 ──
+  let _excelThumbGen = 0;
+  let _draggedExcelThumbUid = null;
+
+  function hidePageThumbnails() {
+    const section = Utils.$('pageThumbnails-excel-pdf');
+    if (section) section.classList.add('hidden');
+    const grid = Utils.$('pageThumbnailGrid-excel-pdf');
+    if (grid) grid.innerHTML = '';
+  }
+
+  function renderPageThumbnailGrid() {
+    const section = Utils.$('pageThumbnails-excel-pdf');
+    const container = Utils.$('pageThumbnailGrid-excel-pdf');
+    const info = Utils.$('pageThumbnailInfo-excel-pdf');
+    if (!section || !container) return;
+
+    section.classList.remove('hidden');
+    container.innerHTML = '';
+    info.textContent = `${state.pageEntries.length} ページ`;
+
+    state.pageEntries.forEach((page) => {
+      const cached = PageThumbnail.getCached('excel-pdf', page.pageIndex);
+      const card = document.createElement('div');
+      card.className = 'page-thumb-card';
+      card.dataset.pageUid = page.uid;
+      card.draggable = true;
+      card.innerHTML = `
+        <div class="page-thumb-img-wrap">
+          <span class="page-thumb-placeholder page-thumb-loading" ${cached ? 'style="display:none"' : ''}>${page.pageIndex + 1}</span>
+          <img class="page-thumb-img" ${cached ? `src="${cached}"` : 'style="display:none"'} alt="P${page.pageIndex + 1}">
+        </div>
+        <div class="page-thumb-info">
+          <span class="page-thumb-page-num">${page.label}</span>
+        </div>
+        <button class="page-thumb-delete" title="削除" data-page-uid="${page.uid}">\u00D7</button>
+      `;
+      container.appendChild(card);
+    });
+
+    bindPageThumbnailEvents();
+    renderPageThumbnailsAsync();
+  }
+
+  async function renderPageThumbnailsAsync() {
+    const gen = ++_excelThumbGen;
+
+    for (const page of state.pageEntries) {
+      if (gen !== _excelThumbGen) return;
+      if (PageThumbnail.getCached('excel-pdf', page.pageIndex)) continue;
+
+      try {
+        const dataUrl = await PageThumbnail.render('excel-pdf', state.pdfBytes, page.pageIndex);
+        if (gen !== _excelThumbGen) return;
+
+        const card = document.querySelector(`#pageThumbnailGrid-excel-pdf [data-page-uid="${page.uid}"]`);
+        if (card) {
+          const img = card.querySelector('.page-thumb-img');
+          const ph = card.querySelector('.page-thumb-placeholder');
+          if (img) { img.src = dataUrl; img.style.display = 'block'; }
+          if (ph) ph.style.display = 'none';
+        }
+      } catch (err) {
+        console.warn('Excel-PDF thumbnail render failed:', page.pageIndex, err);
+      }
+
+      await new Promise((r) => setTimeout(r, 10));
+    }
+  }
+
+  function bindPageThumbnailEvents() {
+    const container = Utils.$('pageThumbnailGrid-excel-pdf');
+
+    // 削除ボタン
+    container.querySelectorAll('.page-thumb-delete').forEach((btn) => {
+      btn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const uid = parseInt(btn.dataset.pageUid, 10);
+        state.pageEntries = state.pageEntries.filter((p) => p.uid !== uid);
+        if (state.pageEntries.length === 0) {
+          hidePageThumbnails();
+        } else {
+          renderPageThumbnailGrid();
+          rebuildPdfPreview();
+        }
+      });
+    });
+
+    // クリック → プレビューモーダル
+    container.querySelectorAll('.page-thumb-card').forEach((card) => {
+      card.addEventListener('click', (e) => {
+        if (e.target.closest('.page-thumb-delete')) return;
+        if (card.classList.contains('dragging')) return;
+        const uid = parseInt(card.dataset.pageUid, 10);
+        const idx = state.pageEntries.findIndex((p) => p.uid === uid);
+        if (idx === -1) return;
+        PagePreviewModal.open({
+          pages: state.pageEntries,
+          currentIndex: idx,
+          cacheKey: 'excel-pdf',
+          pdfData: state.pdfBytes,
+          getTitle: (page) => page.label,
+        });
+      });
+    });
+
+    // ドラッグ&ドロップ
+    container.querySelectorAll('.page-thumb-card').forEach((card) => {
+      card.addEventListener('dragstart', (e) => {
+        _draggedExcelThumbUid = parseInt(card.dataset.pageUid, 10);
+        card.classList.add('dragging');
+        e.dataTransfer.effectAllowed = 'move';
+        e.dataTransfer.setData('text/plain', 'epage-' + card.dataset.pageUid);
+      });
+      card.addEventListener('dragend', () => {
+        card.classList.remove('dragging');
+        _draggedExcelThumbUid = null;
+        container.querySelectorAll('.page-thumb-card').forEach((c) => c.classList.remove('drag-over-card'));
+      });
+      card.addEventListener('dragover', (e) => {
+        e.preventDefault();
+        e.dataTransfer.dropEffect = 'move';
+        if (_draggedExcelThumbUid !== null && _draggedExcelThumbUid !== parseInt(card.dataset.pageUid, 10)) {
+          card.classList.add('drag-over-card');
+        }
+      });
+      card.addEventListener('dragleave', () => card.classList.remove('drag-over-card'));
+      card.addEventListener('drop', (e) => {
+        e.preventDefault();
+        card.classList.remove('drag-over-card');
+        const targetUid = parseInt(card.dataset.pageUid, 10);
+        if (_draggedExcelThumbUid === null || _draggedExcelThumbUid === targetUid) return;
+        const fromIdx = state.pageEntries.findIndex((p) => p.uid === _draggedExcelThumbUid);
+        const toIdx = state.pageEntries.findIndex((p) => p.uid === targetUid);
+        if (fromIdx === -1 || toIdx === -1) return;
+        const [moved] = state.pageEntries.splice(fromIdx, 1);
+        state.pageEntries.splice(toIdx, 0, moved);
+        renderPageThumbnailGrid();
+        rebuildPdfPreview();
+      });
+    });
+  }
+
+  async function rebuildPdfFromPages() {
+    if (!state.pdfBytes || state.pageEntries.length === 0) return null;
+    const { PDFDocument } = PDFLib;
+    const src = await PDFDocument.load(state.pdfBytes, { ignoreEncryption: true });
+    const newDoc = await PDFDocument.create();
+    const indices = state.pageEntries.map((p) => p.pageIndex);
+    const copiedPages = await newDoc.copyPages(src, indices);
+    copiedPages.forEach((page) => newDoc.addPage(page));
+    return newDoc.save();
+  }
+
+  const rebuildPdfPreview = Utils.debounce(async () => {
+    try {
+      const bytes = await rebuildPdfFromPages();
+      if (!bytes) return;
+      const blob = new Blob([bytes], { type: 'application/pdf' });
+      revokePdfUrl();
+      state.pdfBlobUrl = URL.createObjectURL(blob);
+      S('pdfPreview').src = state.pdfBlobUrl;
+      S('previewInfo').textContent = `${state.pageEntries.length} ページ`;
+    } catch (err) {
+      console.error('rebuildPdfPreview failed:', err);
+    }
+  }, 300);
 
   // ── Init ──
   function init() {

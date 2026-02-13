@@ -23,63 +23,6 @@ const PdfToolsConverter = (() => {
   const DOWN_SVG = `<svg width="14" height="14" viewBox="0 0 14 14" fill="none"><path d="M7 12V2M3 8l4 4 4-4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
   const REMOVE_SVG = `<svg width="14" height="14" viewBox="0 0 14 14" fill="none"><path d="M3 3l8 8M11 3l-8 8" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>`;
 
-  // ==========================================
-  // サムネイルレンダラー (pdf.js)
-  // ==========================================
-  const PageThumbnail = {
-    _cache: new Map(),     // "cacheKey_pageIdx" -> dataURL
-    _docCache: new Map(),  // cacheKey -> Promise<PDFDocumentProxy>
-
-    _getDoc(cacheKey, data) {
-      if (!this._docCache.has(cacheKey)) {
-        this._docCache.set(cacheKey,
-          pdfjsLib.getDocument({ data: data.slice(0) }).promise
-        );
-      }
-      return this._docCache.get(cacheKey);
-    },
-
-    async render(cacheKey, pdfData, pageIndex, width) {
-      width = width || 180;
-      const key = `${cacheKey}_${pageIndex}`;
-      if (this._cache.has(key)) return this._cache.get(key);
-
-      const doc = await this._getDoc(cacheKey, pdfData);
-      const page = await doc.getPage(pageIndex + 1);
-      const vp = page.getViewport({ scale: 1 });
-      const scale = width / vp.width;
-      const svp = page.getViewport({ scale });
-
-      const canvas = document.createElement('canvas');
-      canvas.width = Math.floor(svp.width);
-      canvas.height = Math.floor(svp.height);
-      await page.render({
-        canvasContext: canvas.getContext('2d'),
-        viewport: svp,
-      }).promise;
-
-      const dataUrl = canvas.toDataURL('image/jpeg', 0.75);
-      this._cache.set(key, dataUrl);
-      return dataUrl;
-    },
-
-    getCached(cacheKey, pageIndex) {
-      return this._cache.get(`${cacheKey}_${pageIndex}`) || null;
-    },
-
-    clearForKey(prefix) {
-      for (const k of [...this._cache.keys()]) {
-        if (k.startsWith(`${prefix}_`)) this._cache.delete(k);
-      }
-      this._docCache.delete(prefix);
-    },
-
-    clearAll() {
-      this._cache.clear();
-      this._docCache.clear();
-    },
-  };
-
   // ── サブモード管理 ──
   const submodeToggle = panel.querySelector('.submode-toggle');
   const submodeButtons = panel.querySelectorAll('.submode-btn');
@@ -387,6 +330,27 @@ const PdfToolsConverter = (() => {
       });
     });
 
+    // クリック → プレビューモーダル
+    container.querySelectorAll('.page-thumb-card').forEach((card) => {
+      card.addEventListener('click', (e) => {
+        if (e.target.closest('.page-thumb-delete') || e.target.closest('.page-thumb-checkbox')) return;
+        if (card.classList.contains('dragging')) return;
+        const uid = parseInt(card.dataset.pageUid, 10);
+        const idx = mergeState.pages.findIndex((p) => p.uid === uid);
+        if (idx === -1) return;
+        PagePreviewModal.open({
+          pages: mergeState.pages,
+          currentIndex: idx,
+          getCacheKey: (page) => `merge_${page.pdfId}`,
+          getPdfData: (page) => {
+            const pdf = mergeState.pdfs.find((p) => p.id === page.pdfId);
+            return pdf ? pdf.data : null;
+          },
+          getTitle: (page) => page.label,
+        });
+      });
+    });
+
     // ドラッグ&ドロップ
     container.querySelectorAll('.page-thumb-card').forEach((card) => {
       card.addEventListener('dragstart', (e) => {
@@ -619,6 +583,24 @@ const PdfToolsConverter = (() => {
           syncPageRangeText();
           debouncedSplitPreview();
         }
+      });
+    });
+
+    // クリック → プレビューモーダル
+    container.querySelectorAll('.page-thumb-card').forEach((card) => {
+      card.addEventListener('click', (e) => {
+        if (e.target.closest('.page-thumb-checkbox')) return;
+        if (card.classList.contains('dragging')) return;
+        const uid = parseInt(card.dataset.pageUid, 10);
+        const idx = splitState.selectedPages.findIndex((p) => p.uid === uid);
+        if (idx === -1) return;
+        PagePreviewModal.open({
+          pages: splitState.selectedPages,
+          currentIndex: idx,
+          cacheKey: 'split',
+          pdfData: splitState.data,
+          getTitle: (page) => `P${page.pageIndex + 1}`,
+        });
       });
     });
 
