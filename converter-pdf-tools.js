@@ -33,6 +33,8 @@ const PdfToolsConverter = (() => {
     previewUrl: null,
   };
 
+  let mergeOptions = null; // PdfOutputOptions インスタンス
+
   async function handleMergeFiles(files) {
     Loading.show('PDFを読み込み中...');
     try {
@@ -60,6 +62,7 @@ const PdfToolsConverter = (() => {
     if (mergeState.pdfs.length === 0) return;
     Utils.$('dropZone-pdf-merge').classList.add('compact');
     Utils.$('pdfList-pdf-merge').classList.remove('hidden');
+    if (mergeOptions) mergeOptions.show();
     Utils.$('actionsPanel-pdf-merge').classList.remove('hidden');
     renderMergeList();
     debouncedMergePreview();
@@ -72,6 +75,7 @@ const PdfToolsConverter = (() => {
 
     Utils.$('dropZone-pdf-merge').classList.remove('compact');
     Utils.$('pdfList-pdf-merge').classList.add('hidden');
+    if (mergeOptions) mergeOptions.hide();
     Utils.$('previewSection-pdf-merge').classList.add('hidden');
     Utils.$('actionsPanel-pdf-merge').classList.add('hidden');
     Utils.$('pdfListContainer-pdf-merge').innerHTML = '';
@@ -189,6 +193,13 @@ const PdfToolsConverter = (() => {
     });
   }
 
+  function _applyMetadata(pdfDoc, opts) {
+    if (opts.title) pdfDoc.setTitle(opts.title);
+    if (opts.author) pdfDoc.setAuthor(opts.author);
+    if (opts.subject) pdfDoc.setSubject(opts.subject);
+    if (opts.keywords) pdfDoc.setKeywords(opts.keywords.split(',').map((k) => k.trim()));
+  }
+
   async function mergePdfs() {
     if (mergeState.pdfs.length === 0) return null;
     const merged = await PDFDocument.create();
@@ -196,6 +207,10 @@ const PdfToolsConverter = (() => {
       const src = await PDFDocument.load(pdf.data, { ignoreEncryption: true });
       const pages = await merged.copyPages(src, src.getPageIndices());
       pages.forEach((page) => merged.addPage(page));
+    }
+    // メタデータ設定
+    if (mergeOptions) {
+      _applyMetadata(merged, mergeOptions.getOptions());
     }
     return merged;
   }
@@ -259,6 +274,8 @@ const PdfToolsConverter = (() => {
     previewUrl: null,
   };
 
+  let splitOptions = null; // PdfOutputOptions インスタンス
+
   async function handleSplitFile(files) {
     const file = files[0];
     if (!file) return;
@@ -273,6 +290,7 @@ const PdfToolsConverter = (() => {
       Utils.$('splitOptions-pdf-split').classList.remove('hidden');
       Utils.$('splitPageInfo-pdf-split').textContent = `全 ${splitState.pageCount} ページ`;
       Utils.$('pageRange-pdf-split').value = `1-${splitState.pageCount}`;
+      if (splitOptions) splitOptions.show();
       Utils.$('actionsPanel-pdf-split').classList.remove('hidden');
 
       debouncedSplitPreview();
@@ -314,6 +332,12 @@ const PdfToolsConverter = (() => {
     const indices = pageNumbers.map((p) => p - 1); // 0-based
     const copiedPages = await newDoc.copyPages(src, indices);
     copiedPages.forEach((page) => newDoc.addPage(page));
+
+    // メタデータ設定
+    if (splitOptions) {
+      _applyMetadata(newDoc, splitOptions.getOptions());
+    }
+
     return { doc: newDoc, pageNumbers };
   }
 
@@ -380,6 +404,16 @@ const PdfToolsConverter = (() => {
       onFiles: handleMergeFiles,
     });
 
+    // 結合用オプションパネル（メタデータのみ）
+    const mergeListEl = Utils.$('pdfList-pdf-merge');
+    if (mergeListEl) {
+      mergeOptions = PdfOutputOptions.create({
+        container: mergeListEl,
+        suffix: 'pdf-merge',
+        features: { metadata: true, security: false, colorMode: false, imageQuality: false },
+      });
+    }
+
     Utils.$('clearAllPdfs-pdf-merge').addEventListener('click', resetMerge);
     Utils.$('convertBtn-pdf-merge').addEventListener('click', downloadMerged);
 
@@ -391,6 +425,16 @@ const PdfToolsConverter = (() => {
       multiple: false,
       onFiles: handleSplitFile,
     });
+
+    // 分割用オプションパネル（メタデータのみ）
+    const splitOptsEl = Utils.$('splitOptions-pdf-split');
+    if (splitOptsEl) {
+      splitOptions = PdfOutputOptions.create({
+        container: splitOptsEl,
+        suffix: 'pdf-split',
+        features: { metadata: true, security: false, colorMode: false, imageQuality: false },
+      });
+    }
 
     Utils.$('pageRange-pdf-split').addEventListener('input', debouncedSplitPreview);
     Utils.$('convertBtn-pdf-split').addEventListener('click', downloadSplit);
