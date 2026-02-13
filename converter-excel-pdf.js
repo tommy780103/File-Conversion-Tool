@@ -350,6 +350,41 @@ const ExcelPdfConverter = (() => {
     });
   }
 
+  // ── Excel Style Helpers ──
+  function parseExcelColor(colorObj) {
+    if (!colorObj || !colorObj.rgb) return null;
+    // Excel RGB format: AARRGGBB (8 chars) or RRGGBB (6 chars)
+    const hex = colorObj.rgb.length === 8 ? colorObj.rgb.substr(2) : colorObj.rgb;
+    const r = parseInt(hex.substr(0, 2), 16);
+    const g = parseInt(hex.substr(2, 2), 16);
+    const b = parseInt(hex.substr(4, 2), 16);
+    if (isNaN(r) || isNaN(g) || isNaN(b)) return null;
+    return [r, g, b];
+  }
+
+  function getExcelCellStyle(ws, row, col) {
+    const ref = XLSX.utils.encode_cell({ r: row, c: col });
+    const cell = ws[ref];
+    if (!cell || !cell.s) return null;
+    const s = cell.s;
+    const result = {};
+    if (s.fill && s.fill.fgColor) {
+      const bg = parseExcelColor(s.fill.fgColor);
+      if (bg) result.fillColor = bg;
+    }
+    if (s.font) {
+      if (s.font.color) {
+        const fc = parseExcelColor(s.font.color);
+        if (fc) result.textColor = fc;
+      }
+      if (s.font.bold) result.fontStyle = 'bold';
+    }
+    if (s.alignment && s.alignment.horizontal) {
+      result.halign = s.alignment.horizontal;
+    }
+    return Object.keys(result).length > 0 ? result : null;
+  }
+
   // ── PDF Generation ──
   async function generatePDF() {
     const { jsPDF } = window.jspdf;
@@ -378,8 +413,8 @@ const ExcelPdfConverter = (() => {
 
       if (s > 0) doc.addPage(sheetConf.pageSize, sheetConf.orientation === 'landscape' ? 'l' : 'p');
 
-      const sheet = file.workbook.Sheets[sheetConf.sheetName];
-      const jsonData = XLSX.utils.sheet_to_json(sheet, { header: 1, defval: '' });
+      const ws = file.workbook.Sheets[sheetConf.sheetName];
+      const jsonData = XLSX.utils.sheet_to_json(ws, { header: 1, defval: '' });
       if (jsonData.length === 0) continue;
 
       const headers = jsonData[0].map((h) => String(h));
@@ -403,9 +438,20 @@ const ExcelPdfConverter = (() => {
         body,
         startY: showTitle ? 16 : 10,
         styles: { font: fontName, fontSize: sheetConf.fontSize, cellPadding: 2, overflow: 'linebreak', lineColor: [200, 200, 200], lineWidth: 0.1 },
-        headStyles: { font: fontName, fillColor: [99, 102, 241], textColor: [255, 255, 255], fontStyle: 'bold', halign: 'center' },
-        alternateRowStyles: { fillColor: [245, 245, 255] },
+        headStyles: { font: fontName, fillColor: [240, 240, 240], textColor: [0, 0, 0], fontStyle: 'bold', halign: 'center' },
         margin: { top: 10, right: 10, bottom: 10, left: 10 },
+        didParseCell: (data) => {
+          // Excelの元のセルスタイルを適用
+          const excelRow = data.section === 'head' ? 0 : data.row.index + 1;
+          const excelCol = data.column.index;
+          const cellStyle = getExcelCellStyle(ws, excelRow, excelCol);
+          if (cellStyle) {
+            if (cellStyle.fillColor) data.cell.styles.fillColor = cellStyle.fillColor;
+            if (cellStyle.textColor) data.cell.styles.textColor = cellStyle.textColor;
+            if (cellStyle.fontStyle) data.cell.styles.fontStyle = cellStyle.fontStyle;
+            if (cellStyle.halign) data.cell.styles.halign = cellStyle.halign;
+          }
+        },
         didDrawPage: (data) => {
           const pageCount = doc.internal.getNumberOfPages();
           doc.setFontSize(8);
