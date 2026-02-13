@@ -323,7 +323,8 @@ const ImagePdfConverter = (() => {
       Loading.show('PDF変換中...');
       const doc = await generatePDF(false);
       if (!doc) return;
-      doc.save('images.pdf');
+      const baseNames = state.images.map((img) => Utils.getBaseName(img.name));
+      doc.save(Utils.buildDownloadName(baseNames, 'pdf'));
       Toast.show('PDFのダウンロードが完了しました！', 'success');
     } catch (err) {
       Toast.show('PDF変換中にエラーが発生しました', 'error');

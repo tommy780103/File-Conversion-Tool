@@ -250,7 +250,8 @@ const PdfToolsConverter = (() => {
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
-      a.download = 'merged.pdf';
+      const baseNames = mergeState.pdfs.map((p) => Utils.getBaseName(p.name));
+      a.download = Utils.buildDownloadName(baseNames, 'pdf');
       document.body.appendChild(a);
       a.click();
       document.body.removeChild(a);
@@ -377,7 +378,7 @@ const PdfToolsConverter = (() => {
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
-      a.download = Utils.getBaseName(splitState.fileName || 'extracted') + '_extracted.pdf';
+      a.download = Utils.buildDownloadName(Utils.getBaseName(splitState.fileName || 'extracted'), 'pdf');
       document.body.appendChild(a);
       a.click();
       document.body.removeChild(a);

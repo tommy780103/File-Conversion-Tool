@@ -30,6 +30,20 @@ const Utils = {
     return filename.replace(/\.[^.]+$/, '');
   },
 
+  getDateStr() {
+    const d = new Date();
+    const yyyy = d.getFullYear();
+    const mm = String(d.getMonth() + 1).padStart(2, '0');
+    const dd = String(d.getDate()).padStart(2, '0');
+    return `${yyyy}${mm}${dd}`;
+  },
+
+  buildDownloadName(baseNames, ext) {
+    const date = this.getDateStr();
+    const name = Array.isArray(baseNames) ? baseNames.join('_') : baseNames;
+    return `${name}_${date}.${ext}`;
+  },
+
   $(id) {
     return document.getElementById(id);
   },

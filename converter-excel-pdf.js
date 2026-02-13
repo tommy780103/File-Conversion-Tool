@@ -556,12 +556,8 @@ const ExcelPdfConverter = (() => {
       const doc = await generatePDF(false);
       if (!doc) { Toast.show('シートが選択されていません', 'error'); return; }
       const fileIds = Object.keys(state.files);
-      let pdfFileName;
-      if (fileIds.length === 1) {
-        pdfFileName = Utils.getBaseName(state.files[fileIds[0]].name) + '.pdf';
-      } else {
-        pdfFileName = 'combined_output.pdf';
-      }
+      const baseNames = fileIds.map((fid) => Utils.getBaseName(state.files[fid].name));
+      const pdfFileName = Utils.buildDownloadName(baseNames, 'pdf');
       doc.save(pdfFileName);
       Toast.show('PDFのダウンロードが完了しました！', 'success');
     } catch (err) {

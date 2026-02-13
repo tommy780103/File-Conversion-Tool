@@ -186,7 +186,7 @@ const CsvExcelConverter = (() => {
       const ws = XLSX.utils.aoa_to_sheet(csvState.parsedData);
       const wb = XLSX.utils.book_new();
       XLSX.utils.book_append_sheet(wb, ws, 'Sheet1');
-      const outName = Utils.getBaseName(csvState.fileName || 'data') + '.xlsx';
+      const outName = Utils.buildDownloadName(Utils.getBaseName(csvState.fileName || 'data'), 'xlsx');
       XLSX.writeFile(wb, outName);
       Toast.show('Excelファイルのダウンロードが完了しました！', 'success');
     } catch (err) {
@@ -295,7 +295,7 @@ const CsvExcelConverter = (() => {
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
-      a.download = Utils.getBaseName(excelState.fileName || 'data') + '.csv';
+      a.download = Utils.buildDownloadName(Utils.getBaseName(excelState.fileName || 'data'), 'csv');
       document.body.appendChild(a);
       a.click();
       document.body.removeChild(a);
