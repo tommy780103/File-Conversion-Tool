@@ -11,6 +11,8 @@ const ImagePdfConverter = (() => {
     pdfBlobUrl: null,
   };
 
+  let pdfOptions = null; // PdfOutputOptions インスタンス
+
   function handleFiles(files) {
     const promises = Array.from(files).map((file) => loadImage(file));
     Promise.all(promises).then(() => {
@@ -53,6 +55,7 @@ const ImagePdfConverter = (() => {
     S('dropZone').classList.add('compact');
     S('imageList').classList.remove('hidden');
     S('defaultSettings').classList.remove('hidden');
+    if (pdfOptions) pdfOptions.show();
     S('previewSection').classList.remove('hidden');
     S('actionsPanel').classList.remove('hidden');
     renderImageGrid();
@@ -68,6 +71,7 @@ const ImagePdfConverter = (() => {
     S('dropZone').classList.remove('compact');
     S('imageList').classList.add('hidden');
     S('defaultSettings').classList.add('hidden');
+    if (pdfOptions) pdfOptions.hide();
     S('previewSection').classList.add('hidden');
     S('actionsPanel').classList.add('hidden');
     S('imageGrid').innerHTML = '';
@@ -187,10 +191,14 @@ const ImagePdfConverter = (() => {
     };
   }
 
-  function generatePDF() {
+  /**
+   * @param {boolean} isPreview - true ならプレビュー用（暗号化なし）
+   */
+  async function generatePDF(isPreview) {
     if (state.images.length === 0) return null;
     const { jsPDF } = window.jspdf;
     const settings = getSettings();
+    const opts = pdfOptions ? pdfOptions.getOptions() : {};
 
     // ページサイズ定義 (mm)
     const pageSizes = {
@@ -198,14 +206,31 @@ const ImagePdfConverter = (() => {
     };
 
     let doc = null;
+    const colorMode = opts.colorMode || 'color';
+    const jpegQuality = opts.imageQuality || 0.75;
 
-    state.images.forEach((img, idx) => {
+    for (let idx = 0; idx < state.images.length; idx++) {
+      const img = state.images[idx];
+
       const isLandscape = settings.orientation === 'landscape' ||
         (settings.orientation === 'auto' && img.width > img.height);
       const orient = isLandscape ? 'l' : 'p';
 
       if (idx === 0) {
-        doc = new jsPDF({ orientation: orient, unit: 'mm', format: settings.pageSize });
+        // jsPDF暗号化はコンストラクタ時のみ設定可能
+        const jsPdfOpts = { orientation: orient, unit: 'mm', format: settings.pageSize };
+
+        if (!isPreview && (opts.userPassword || opts.ownerPassword)) {
+          jsPdfOpts.encryption = {
+            userPassword: opts.userPassword || '',
+            ownerPassword: opts.ownerPassword || opts.userPassword || '',
+            userPermissions: [],
+          };
+          if (opts.allowPrint) jsPdfOpts.encryption.userPermissions.push('print');
+          if (opts.allowCopy) jsPdfOpts.encryption.userPermissions.push('copy');
+        }
+
+        doc = new jsPDF(jsPdfOpts);
       } else {
         doc.addPage(settings.pageSize, orient);
       }
@@ -233,9 +258,27 @@ const ImagePdfConverter = (() => {
       const x = margin + (availW - drawW) / 2;
       const y = margin + (availH - drawH) / 2;
 
-      const format = _getImageFormat(img.name);
-      doc.addImage(img.dataUrl, format, x, y, drawW, drawH);
-    });
+      // 色変換+品質調整
+      let imageData = img.dataUrl;
+      if (colorMode !== 'color' || jpegQuality < 0.9) {
+        imageData = await PdfOutputOptions.utils.processImage(
+          img.dataUrl, colorMode, jpegQuality, img.width, img.height
+        );
+      }
+
+      const format = (colorMode !== 'color' || jpegQuality < 0.9) ? 'JPEG' : _getImageFormat(img.name);
+      doc.addImage(imageData, format, x, y, drawW, drawH);
+    }
+
+    // メタデータ設定
+    if (doc && (opts.title || opts.author || opts.subject || opts.keywords)) {
+      doc.setProperties({
+        title: opts.title || '',
+        author: opts.author || '',
+        subject: opts.subject || '',
+        keywords: opts.keywords || '',
+      });
+    }
 
     return doc;
   }
@@ -253,39 +296,40 @@ const ImagePdfConverter = (() => {
   // ── Preview ──
   const debouncedUpdatePreview = Utils.debounce(updatePreview, 300);
 
-  function updatePreview() {
+  async function updatePreview() {
     if (state.images.length === 0) return;
     const previewInfo = S('previewInfo');
     const pdfPreview = S('pdfPreview');
     previewInfo.textContent = '生成中...';
 
-    setTimeout(() => {
-      try {
-        const doc = generatePDF();
-        if (!doc) return;
-        const blob = doc.output('blob');
-        state.pdfBlobUrl = Utils.revokeBlobUrl(state.pdfBlobUrl);
-        state.pdfBlobUrl = URL.createObjectURL(blob);
-        pdfPreview.src = state.pdfBlobUrl;
-        previewInfo.textContent = `${state.images.length} 画像・${doc.internal.getNumberOfPages()} ページ`;
-      } catch (err) {
-        previewInfo.textContent = 'プレビュー生成に失敗しました';
-        console.error(err);
-      }
-    }, 50);
+    try {
+      const doc = await generatePDF(true);
+      if (!doc) return;
+      const blob = doc.output('blob');
+      state.pdfBlobUrl = Utils.revokeBlobUrl(state.pdfBlobUrl);
+      state.pdfBlobUrl = URL.createObjectURL(blob);
+      pdfPreview.src = state.pdfBlobUrl;
+      previewInfo.textContent = `${state.images.length} 画像・${doc.internal.getNumberOfPages()} ページ`;
+    } catch (err) {
+      previewInfo.textContent = 'プレビュー生成に失敗しました';
+      console.error(err);
+    }
   }
 
   // ── Download ──
-  function download() {
+  async function download() {
     if (state.images.length === 0) return;
     try {
-      const doc = generatePDF();
+      Loading.show('PDF変換中...');
+      const doc = await generatePDF(false);
       if (!doc) return;
       doc.save('images.pdf');
       Toast.show('PDFのダウンロードが完了しました！', 'success');
     } catch (err) {
       Toast.show('PDF変換中にエラーが発生しました', 'error');
       console.error(err);
+    } finally {
+      Loading.hide();
     }
   }
 
@@ -298,6 +342,16 @@ const ImagePdfConverter = (() => {
       multiple: true,
       onFiles: handleFiles,
     });
+
+    // PDF出力オプションパネルを defaultSettings の後に挿入
+    const settingsEl = S('defaultSettings');
+    if (settingsEl) {
+      pdfOptions = PdfOutputOptions.create({
+        container: settingsEl,
+        suffix: 'image-pdf',
+        features: { metadata: true, security: true, colorMode: true, imageQuality: true },
+      });
+    }
 
     S('clearAllImages').addEventListener('click', resetAll);
     S('convertBtn').addEventListener('click', download);

@@ -13,6 +13,7 @@ const ExcelPdfConverter = (() => {
     pdfBlobUrl: null,
   };
 
+  let pdfOptions = null; // PdfOutputOptions インスタンス
   let previewTimer = null;
 
   function getDefaults() {
@@ -73,6 +74,7 @@ const ExcelPdfConverter = (() => {
     S('fileChips').classList.remove('hidden');
     S('sheetList').classList.remove('hidden');
     S('defaultSettings').classList.remove('hidden');
+    if (pdfOptions) pdfOptions.show();
     S('previewSection').classList.remove('hidden');
     S('actionsPanel').classList.remove('hidden');
 
@@ -92,6 +94,7 @@ const ExcelPdfConverter = (() => {
     S('fileChips').classList.add('hidden');
     S('sheetList').classList.add('hidden');
     S('defaultSettings').classList.add('hidden');
+    if (pdfOptions) pdfOptions.hide();
     S('previewSection').classList.add('hidden');
     S('actionsPanel').classList.add('hidden');
 
@@ -353,7 +356,6 @@ const ExcelPdfConverter = (() => {
   // ── Excel Style Helpers ──
   function parseExcelColor(colorObj) {
     if (!colorObj || !colorObj.rgb) return null;
-    // Excel RGB format: AARRGGBB (8 chars) or RRGGBB (6 chars)
     const hex = colorObj.rgb.length === 8 ? colorObj.rgb.substr(2) : colorObj.rgb;
     const r = parseInt(hex.substr(0, 2), 16);
     const g = parseInt(hex.substr(2, 2), 16);
@@ -386,21 +388,41 @@ const ExcelPdfConverter = (() => {
   }
 
   // ── PDF Generation ──
-  async function generatePDF() {
+  /**
+   * @param {boolean} isPreview - true ならプレビュー用（暗号化なし）
+   */
+  async function generatePDF(isPreview) {
     const { jsPDF } = window.jspdf;
     const selectedSheets = state.sheets.filter((s) => s.selected);
     if (selectedSheets.length === 0) return null;
+
+    const opts = pdfOptions ? pdfOptions.getOptions() : {};
+    const colorMode = opts.colorMode || 'color';
 
     // 日本語フォントを読み込み
     await JapaneseFont.load();
 
     const multipleFiles = Object.keys(state.files).length > 1;
     const first = selectedSheets[0];
-    const doc = new jsPDF({
+
+    // jsPDF暗号化はコンストラクタ時のみ設定可能
+    const jsPdfOpts = {
       orientation: first.orientation === 'landscape' ? 'l' : 'p',
       unit: 'mm',
       format: first.pageSize,
-    });
+    };
+
+    if (!isPreview && (opts.userPassword || opts.ownerPassword)) {
+      jsPdfOpts.encryption = {
+        userPassword: opts.userPassword || '',
+        ownerPassword: opts.ownerPassword || opts.userPassword || '',
+        userPermissions: [],
+      };
+      if (opts.allowPrint) jsPdfOpts.encryption.userPermissions.push('print');
+      if (opts.allowCopy) jsPdfOpts.encryption.userPermissions.push('copy');
+    }
+
+    const doc = new jsPDF(jsPdfOpts);
 
     // 日本語フォントを登録
     const fontAvailable = JapaneseFont.register(doc);
@@ -438,10 +460,9 @@ const ExcelPdfConverter = (() => {
         body,
         startY: showTitle ? 16 : 10,
         styles: { font: fontName, fontSize: sheetConf.fontSize, cellPadding: 2, overflow: 'linebreak', lineColor: [200, 200, 200], lineWidth: 0.1 },
-        headStyles: { font: fontName, fillColor: [240, 240, 240], textColor: [0, 0, 0], fontStyle: 'bold', halign: 'center' },
+        headStyles: { font: fontName, fillColor: [255, 255, 255], textColor: [0, 0, 0] },
         margin: { top: 10, right: 10, bottom: 10, left: 10 },
         didParseCell: (data) => {
-          // Excelの元のセルスタイルを適用
           const excelRow = data.section === 'head' ? 0 : data.row.index + 1;
           const excelCol = data.column.index;
           const cellStyle = getExcelCellStyle(ws, excelRow, excelCol);
@@ -451,11 +472,23 @@ const ExcelPdfConverter = (() => {
             if (cellStyle.fontStyle) data.cell.styles.fontStyle = cellStyle.fontStyle;
             if (cellStyle.halign) data.cell.styles.halign = cellStyle.halign;
           }
+          // 色変換を適用
+          if (colorMode !== 'color') {
+            if (data.cell.styles.fillColor && Array.isArray(data.cell.styles.fillColor)) {
+              data.cell.styles.fillColor = PdfOutputOptions.utils.convertColor(data.cell.styles.fillColor, colorMode);
+            }
+            if (data.cell.styles.textColor && Array.isArray(data.cell.styles.textColor)) {
+              data.cell.styles.textColor = PdfOutputOptions.utils.convertColor(data.cell.styles.textColor, colorMode);
+            }
+          }
         },
         didDrawPage: (data) => {
           const pageCount = doc.internal.getNumberOfPages();
           doc.setFontSize(8);
-          doc.setTextColor(150, 150, 150);
+          const footerColor = colorMode !== 'color'
+            ? PdfOutputOptions.utils.convertColor([150, 150, 150], colorMode)
+            : [150, 150, 150];
+          doc.setTextColor(...footerColor);
           if (fontAvailable) doc.setFont(fontName);
           const pw = doc.internal.pageSize.getWidth();
           const ph = doc.internal.pageSize.getHeight();
@@ -463,6 +496,17 @@ const ExcelPdfConverter = (() => {
         },
       });
     }
+
+    // メタデータ設定
+    if (opts.title || opts.author || opts.subject || opts.keywords) {
+      doc.setProperties({
+        title: opts.title || '',
+        author: opts.author || '',
+        subject: opts.subject || '',
+        keywords: opts.keywords || '',
+      });
+    }
+
     return doc;
   }
 
@@ -489,7 +533,7 @@ const ExcelPdfConverter = (() => {
 
     setTimeout(async () => {
       try {
-        const doc = await generatePDF();
+        const doc = await generatePDF(true);
         if (!doc) { previewInfo.textContent = 'シートが選択されていません'; return; }
         const blob = doc.output('blob');
         revokePdfUrl();
@@ -509,7 +553,7 @@ const ExcelPdfConverter = (() => {
     if (Object.keys(state.files).length === 0) return;
     try {
       Loading.show('PDF変換中...');
-      const doc = await generatePDF();
+      const doc = await generatePDF(false);
       if (!doc) { Toast.show('シートが選択されていません', 'error'); return; }
       const fileIds = Object.keys(state.files);
       let pdfFileName;
@@ -537,6 +581,16 @@ const ExcelPdfConverter = (() => {
       multiple: true,
       onFiles: handleFiles,
     });
+
+    // PDF出力オプションパネルを defaultSettings の後に挿入
+    const settingsEl = S('defaultSettings');
+    if (settingsEl) {
+      pdfOptions = PdfOutputOptions.create({
+        container: settingsEl,
+        suffix: 'excel-pdf',
+        features: { metadata: true, security: true, colorMode: true, imageQuality: false },
+      });
+    }
 
     S('clearAllFiles').addEventListener('click', resetAll);
 
