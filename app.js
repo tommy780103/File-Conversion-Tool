@@ -41,6 +41,132 @@ const Utils = {
 };
 
 // ==========================================
+// Font Cache (IndexedDB)
+// ==========================================
+const FontCache = {
+  DB_NAME: 'fileConverterFontCache',
+  STORE_NAME: 'fonts',
+  DB_VERSION: 1,
+
+  _openDB() {
+    return new Promise((resolve, reject) => {
+      const request = indexedDB.open(this.DB_NAME, this.DB_VERSION);
+      request.onupgradeneeded = (e) => {
+        const db = e.target.result;
+        if (!db.objectStoreNames.contains(this.STORE_NAME)) {
+          db.createObjectStore(this.STORE_NAME);
+        }
+      };
+      request.onsuccess = () => resolve(request.result);
+      request.onerror = () => reject(request.error);
+    });
+  },
+
+  async get(key) {
+    try {
+      const db = await this._openDB();
+      return new Promise((resolve) => {
+        const tx = db.transaction(this.STORE_NAME, 'readonly');
+        const store = tx.objectStore(this.STORE_NAME);
+        const req = store.get(key);
+        req.onsuccess = () => resolve(req.result || null);
+        req.onerror = () => resolve(null);
+      });
+    } catch {
+      return null;
+    }
+  },
+
+  async set(key, value) {
+    try {
+      const db = await this._openDB();
+      return new Promise((resolve) => {
+        const tx = db.transaction(this.STORE_NAME, 'readwrite');
+        const store = tx.objectStore(this.STORE_NAME);
+        store.put(value, key);
+        tx.oncomplete = () => resolve(true);
+        tx.onerror = () => resolve(false);
+      });
+    } catch {
+      return false;
+    }
+  },
+};
+
+// ==========================================
+// Japanese Font Loader (Noto Sans JP)
+// ==========================================
+const JapaneseFont = {
+  _data: null,
+  _loadPromise: null,
+  FONT_NAME: 'NotoSansJP',
+  FONT_FILE: 'NotoSansJP.ttf',
+  CACHE_KEY: 'NotoSansJP-v1',
+  FONT_URL: 'https://cdn.jsdelivr.net/gh/google/fonts@main/ofl/notosansjp/NotoSansJP%5Bwght%5D.ttf',
+
+  isLoaded() {
+    return this._data !== null;
+  },
+
+  async load() {
+    if (this._data) return true;
+    if (this._loadPromise) return this._loadPromise;
+    this._loadPromise = this._doLoad();
+    const result = await this._loadPromise;
+    this._loadPromise = null;
+    return result;
+  },
+
+  async _doLoad() {
+    // Try IndexedDB cache first
+    try {
+      const cached = await FontCache.get(this.CACHE_KEY);
+      if (cached) {
+        this._data = cached;
+        return true;
+      }
+    } catch (e) {
+      console.warn('Font cache read failed:', e);
+    }
+
+    // Download from CDN
+    try {
+      const response = await fetch(this.FONT_URL);
+      if (!response.ok) throw new Error(`HTTP ${response.status}`);
+      const arrayBuffer = await response.arrayBuffer();
+      const base64 = this._arrayBufferToBase64(arrayBuffer);
+      this._data = base64;
+      // Cache for next time (fire and forget)
+      FontCache.set(this.CACHE_KEY, base64).catch(() => {});
+      return true;
+    } catch (e) {
+      console.warn('Japanese font download failed:', e);
+      return false;
+    }
+  },
+
+  _arrayBufferToBase64(buffer) {
+    const bytes = new Uint8Array(buffer);
+    const chunks = [];
+    const chunkSize = 8192;
+    for (let i = 0; i < bytes.length; i += chunkSize) {
+      const chunk = bytes.subarray(i, Math.min(i + chunkSize, bytes.length));
+      chunks.push(String.fromCharCode.apply(null, chunk));
+    }
+    return btoa(chunks.join(''));
+  },
+
+  register(doc) {
+    if (!this._data) return false;
+    doc.addFileToVFS(this.FONT_FILE, this._data);
+    doc.addFont(this.FONT_FILE, this.FONT_NAME, 'normal');
+    doc.addFont(this.FONT_FILE, this.FONT_NAME, 'bold');
+    doc.setFont(this.FONT_NAME);
+    return true;
+  },
+};
+
+// ==========================================
 // Toast
 // ==========================================
 const Toast = {
@@ -249,4 +375,6 @@ document.addEventListener('DOMContentLoaded', () => {
   // 各コンバーターの init（各ファイルで呼ばれる）後にタブを初期化
   // converterファイルが先に読み込まれるのでDOMContentLoadedで実行
   TabManager.init();
+  // 日本語フォントをバックグラウンドでプリロード
+  JapaneseFont.load().catch(() => {});
 });

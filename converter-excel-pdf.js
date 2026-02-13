@@ -351,10 +351,13 @@ const ExcelPdfConverter = (() => {
   }
 
   // ── PDF Generation ──
-  function generatePDF() {
+  async function generatePDF() {
     const { jsPDF } = window.jspdf;
     const selectedSheets = state.sheets.filter((s) => s.selected);
     if (selectedSheets.length === 0) return null;
+
+    // 日本語フォントを読み込み
+    await JapaneseFont.load();
 
     const multipleFiles = Object.keys(state.files).length > 1;
     const first = selectedSheets[0];
@@ -363,6 +366,10 @@ const ExcelPdfConverter = (() => {
       unit: 'mm',
       format: first.pageSize,
     });
+
+    // 日本語フォントを登録
+    const fontAvailable = JapaneseFont.register(doc);
+    const fontName = fontAvailable ? JapaneseFont.FONT_NAME : undefined;
 
     for (let s = 0; s < selectedSheets.length; s++) {
       const sheetConf = selectedSheets[s];
@@ -387,21 +394,23 @@ const ExcelPdfConverter = (() => {
       if (showTitle) {
         doc.setFontSize(12);
         doc.setTextColor(100, 100, 100);
-        doc.text(`Sheet: ${titleText}`, 14, 12);
+        if (fontAvailable) doc.setFont(fontName);
+        doc.text(titleText, 14, 12);
       }
 
       doc.autoTable({
         head: [headers],
         body,
         startY: showTitle ? 16 : 10,
-        styles: { fontSize: sheetConf.fontSize, cellPadding: 2, overflow: 'linebreak', lineColor: [200, 200, 200], lineWidth: 0.1 },
-        headStyles: { fillColor: [99, 102, 241], textColor: [255, 255, 255], fontStyle: 'bold', halign: 'center' },
+        styles: { font: fontName, fontSize: sheetConf.fontSize, cellPadding: 2, overflow: 'linebreak', lineColor: [200, 200, 200], lineWidth: 0.1 },
+        headStyles: { font: fontName, fillColor: [99, 102, 241], textColor: [255, 255, 255], fontStyle: 'bold', halign: 'center' },
         alternateRowStyles: { fillColor: [245, 245, 255] },
         margin: { top: 10, right: 10, bottom: 10, left: 10 },
         didDrawPage: (data) => {
           const pageCount = doc.internal.getNumberOfPages();
           doc.setFontSize(8);
           doc.setTextColor(150, 150, 150);
+          if (fontAvailable) doc.setFont(fontName);
           const pw = doc.internal.pageSize.getWidth();
           const ph = doc.internal.pageSize.getHeight();
           doc.text(`${data.pageNumber} / ${pageCount}`, pw / 2, ph - 6, { align: 'center' });
@@ -430,11 +439,11 @@ const ExcelPdfConverter = (() => {
       pdfPreview.src = '';
       return;
     }
-    previewInfo.textContent = '生成中...';
+    previewInfo.textContent = JapaneseFont.isLoaded() ? '生成中...' : 'フォント読み込み中...';
 
-    setTimeout(() => {
+    setTimeout(async () => {
       try {
-        const doc = generatePDF();
+        const doc = await generatePDF();
         if (!doc) { previewInfo.textContent = 'シートが選択されていません'; return; }
         const blob = doc.output('blob');
         revokePdfUrl();
@@ -450,10 +459,11 @@ const ExcelPdfConverter = (() => {
   }
 
   // ── Download ──
-  function download() {
+  async function download() {
     if (Object.keys(state.files).length === 0) return;
     try {
-      const doc = generatePDF();
+      Loading.show('PDF変換中...');
+      const doc = await generatePDF();
       if (!doc) { Toast.show('シートが選択されていません', 'error'); return; }
       const fileIds = Object.keys(state.files);
       let pdfFileName;
@@ -467,6 +477,8 @@ const ExcelPdfConverter = (() => {
     } catch (err) {
       Toast.show('PDF変換中にエラーが発生しました', 'error');
       console.error(err);
+    } finally {
+      Loading.hide();
     }
   }
 
