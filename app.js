@@ -40,7 +40,7 @@ const Utils = {
 
   buildDownloadName(baseNames, ext) {
     const date = this.getDateStr();
-    const name = Array.isArray(baseNames) ? baseNames.join('_') : baseNames;
+    const name = Array.isArray(baseNames) ? baseNames[0] : baseNames;
     return `${name}_${date}.${ext}`;
   },
 
