@@ -548,11 +548,12 @@ const ExcelPdfConverter = (() => {
         const ab = doc.output('arraybuffer');
         state.pdfBytes = new Uint8Array(ab);
 
-        const blob = new Blob([state.pdfBytes], { type: 'application/pdf' });
         revokePdfUrl();
-        state.pdfBlobUrl = URL.createObjectURL(blob);
-        pdfPreview.src = state.pdfBlobUrl;
         const pageCount = doc.internal.getNumberOfPages();
+        const fileIds = Object.keys(state.files);
+        const firstName = fileIds.length > 0 ? Utils.getBaseName(state.files[fileIds[0]].name) : 'preview';
+        state.pdfBlobUrl = Utils.createPdfUrl(state.pdfBytes, Utils.buildDownloadName(firstName, 'pdf'));
+        pdfPreview.src = state.pdfBlobUrl;
         previewInfo.textContent = `${selectedCount} シート・${pageCount} ページ`;
 
         // ページエントリ初期化
@@ -585,8 +586,7 @@ const ExcelPdfConverter = (() => {
       if (state.pdfBytes && state.pageEntries.length > 0) {
         const finalBytes = await rebuildPdfFromPages();
         if (!finalBytes) { Toast.show('シートが選択されていません', 'error'); Loading.hide(); return; }
-        const blob = new Blob([finalBytes], { type: 'application/pdf' });
-        const url = URL.createObjectURL(blob);
+        const url = Utils.createPdfUrl(finalBytes, pdfFileName);
         const a = document.createElement('a');
         a.href = url;
         a.download = pdfFileName;
@@ -766,9 +766,10 @@ const ExcelPdfConverter = (() => {
     try {
       const bytes = await rebuildPdfFromPages();
       if (!bytes) return;
-      const blob = new Blob([bytes], { type: 'application/pdf' });
       revokePdfUrl();
-      state.pdfBlobUrl = URL.createObjectURL(blob);
+      const fileIds = Object.keys(state.files);
+      const firstName = fileIds.length > 0 ? Utils.getBaseName(state.files[fileIds[0]].name) : 'preview';
+      state.pdfBlobUrl = Utils.createPdfUrl(bytes, Utils.buildDownloadName(firstName, 'pdf'));
       S('pdfPreview').src = state.pdfBlobUrl;
       S('previewInfo').textContent = `${state.pageEntries.length} ページ`;
     } catch (err) {

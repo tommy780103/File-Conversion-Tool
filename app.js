@@ -44,6 +44,12 @@ const Utils = {
     return `${name}_${date}.${ext}`;
   },
 
+  /** Blob の代わりに File で URL を生成し、ブラウザにファイル名を渡す */
+  createPdfUrl(data, fileName) {
+    const file = new File([data], fileName, { type: 'application/pdf' });
+    return URL.createObjectURL(file);
+  },
+
   $(id) {
     return document.getElementById(id);
   },

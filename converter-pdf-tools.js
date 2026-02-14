@@ -426,9 +426,9 @@ const PdfToolsConverter = (() => {
       const merged = await mergePdfs();
       if (!merged) return;
       const bytes = await merged.save();
-      const blob = new Blob([bytes], { type: 'application/pdf' });
+      const firstName = mergeState.pdfs.length > 0 ? Utils.getBaseName(mergeState.pdfs[0].name) : 'merged';
       mergeState.previewUrl = Utils.revokeBlobUrl(mergeState.previewUrl);
-      mergeState.previewUrl = URL.createObjectURL(blob);
+      mergeState.previewUrl = Utils.createPdfUrl(bytes, Utils.buildDownloadName(firstName, 'pdf'));
       pdfPreview.src = mergeState.previewUrl;
       Utils.$('previewSection-pdf-merge').classList.remove('hidden');
       previewInfo.textContent = `${mergeState.pdfs.length} ファイル・${mergeState.pages.length} ページ`;
@@ -445,11 +445,11 @@ const PdfToolsConverter = (() => {
       const merged = await mergePdfs();
       if (!merged) return;
       const bytes = await merged.save();
-      const blob = new Blob([bytes], { type: 'application/pdf' });
-      const url = URL.createObjectURL(blob);
+      const dlName = Utils.buildDownloadName(mergeState.pdfs.map((p) => Utils.getBaseName(p.name)), 'pdf');
+      const url = Utils.createPdfUrl(bytes, dlName);
       const a = document.createElement('a');
       a.href = url;
-      a.download = Utils.buildDownloadName(mergeState.pdfs.map((p) => Utils.getBaseName(p.name)), 'pdf');
+      a.download = dlName;
       document.body.appendChild(a);
       a.click();
       document.body.removeChild(a);
@@ -740,9 +740,9 @@ const PdfToolsConverter = (() => {
       const result = await extractPages();
       if (!result) { previewInfo.textContent = '有効なページ範囲を指定してください'; return; }
       const bytes = await result.doc.save();
-      const blob = new Blob([bytes], { type: 'application/pdf' });
+      const splitBaseName = Utils.getBaseName(splitState.fileName || 'extracted');
       splitState.previewUrl = Utils.revokeBlobUrl(splitState.previewUrl);
-      splitState.previewUrl = URL.createObjectURL(blob);
+      splitState.previewUrl = Utils.createPdfUrl(bytes, Utils.buildDownloadName(splitBaseName, 'pdf'));
       pdfPreview.src = splitState.previewUrl;
       Utils.$('previewSection-pdf-split').classList.remove('hidden');
       previewInfo.textContent = `${result.pageNumbers.length} ページを抽出`;
@@ -759,11 +759,11 @@ const PdfToolsConverter = (() => {
       const result = await extractPages();
       if (!result) { Toast.show('有効なページ範囲を指定してください', 'error'); Loading.hide(); return; }
       const bytes = await result.doc.save();
-      const blob = new Blob([bytes], { type: 'application/pdf' });
-      const url = URL.createObjectURL(blob);
+      const dlName = Utils.buildDownloadName(Utils.getBaseName(splitState.fileName || 'extracted'), 'pdf');
+      const url = Utils.createPdfUrl(bytes, dlName);
       const a = document.createElement('a');
       a.href = url;
-      a.download = Utils.buildDownloadName(Utils.getBaseName(splitState.fileName || 'extracted'), 'pdf');
+      a.download = dlName;
       document.body.appendChild(a);
       a.click();
       document.body.removeChild(a);

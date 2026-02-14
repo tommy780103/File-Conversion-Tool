@@ -318,11 +318,11 @@ const ImagePdfConverter = (() => {
       const ab = doc.output('arraybuffer');
       state.pdfBytes = new Uint8Array(ab);
 
-      const blob = new Blob([state.pdfBytes], { type: 'application/pdf' });
       state.pdfBlobUrl = Utils.revokeBlobUrl(state.pdfBlobUrl);
-      state.pdfBlobUrl = URL.createObjectURL(blob);
-      pdfPreview.src = state.pdfBlobUrl;
       const pageCount = doc.internal.getNumberOfPages();
+      const firstName = state.images.length > 0 ? Utils.getBaseName(state.images[0].name) : 'preview';
+      state.pdfBlobUrl = Utils.createPdfUrl(state.pdfBytes, Utils.buildDownloadName(firstName, 'pdf'));
+      pdfPreview.src = state.pdfBlobUrl;
       previewInfo.textContent = `${state.images.length} 画像・${pageCount} ページ`;
 
       // ページエントリ初期化
@@ -353,8 +353,7 @@ const ImagePdfConverter = (() => {
       if (state.pdfBytes && state.pageEntries.length > 0) {
         const finalBytes = await rebuildPdfFromPages();
         if (!finalBytes) { Loading.hide(); return; }
-        const blob = new Blob([finalBytes], { type: 'application/pdf' });
-        const url = URL.createObjectURL(blob);
+        const url = Utils.createPdfUrl(finalBytes, pdfFileName);
         const a = document.createElement('a');
         a.href = url;
         a.download = pdfFileName;
@@ -534,9 +533,9 @@ const ImagePdfConverter = (() => {
     try {
       const bytes = await rebuildPdfFromPages();
       if (!bytes) return;
-      const blob = new Blob([bytes], { type: 'application/pdf' });
       state.pdfBlobUrl = Utils.revokeBlobUrl(state.pdfBlobUrl);
-      state.pdfBlobUrl = URL.createObjectURL(blob);
+      const firstName = state.images.length > 0 ? Utils.getBaseName(state.images[0].name) : 'preview';
+      state.pdfBlobUrl = Utils.createPdfUrl(bytes, Utils.buildDownloadName(firstName, 'pdf'));
       S('pdfPreview').src = state.pdfBlobUrl;
       S('previewInfo').textContent = `${state.pageEntries.length} ページ`;
     } catch (err) {
